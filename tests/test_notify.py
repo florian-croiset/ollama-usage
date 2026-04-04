@@ -195,9 +195,9 @@ class TestSendFallback:
             _send(title="test", message="test")
 
     def test_no_crash_when_plyer_raises(self) -> None:
-    """_send should swallow plyer exceptions and log them."""
-    with patch("ollama_usage.notify._HAS_PLYER", True):
-        with patch("ollama_usage.notify._plyer_notification") as mock_notif:
-            mock_notif.notify.side_effect = RuntimeError("OS error")
-            from ollama_usage.notify import _send
-            _send(title="test", message="test")
+        """_send should swallow plyer exceptions and log them."""
+        with patch("ollama_usage.notify._HAS_PLYER", True):
+            with patch("ollama_usage.notify._plyer_notification") as mock_notif:
+                mock_notif.notify.side_effect = RuntimeError("OS error")
+                from ollama_usage.notify import _send
+                _send(title="test", message="test")
