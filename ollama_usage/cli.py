@@ -116,11 +116,9 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Enable debug logs")
     args = parser.parse_args()
 
-    # Init colorama inside main() to avoid Windows rendering bugs at import time
     if _HAS_COLOR:
         just_fix_windows_console()
 
-    # Warn if --interval is given without --watch
     if args.interval != 30 and not args.watch:
         print("Warning: --interval has no effect without --watch.", file=sys.stderr)
 

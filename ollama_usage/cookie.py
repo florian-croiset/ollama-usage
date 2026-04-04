@@ -70,32 +70,55 @@ def _firefox_profiles_dir() -> pathlib.Path:
 
 def _get_default_firefox_profile(base: pathlib.Path) -> pathlib.Path:
     """
-    Return the path of the default Firefox profile.
-    Reads profiles.ini to find the profile marked Default=1.
+    Return the path of the default Firefox profile that contains cookies.sqlite.
+    Reads profiles.ini, collects all candidates (Default=1 first),
+    then returns the first one that actually has cookies.sqlite.
     Falls back to glob if profiles.ini is absent or malformed.
     """
-    for ini_candidate in [base.parent / "profiles.ini", base / "profiles.ini"]:
-        if ini_candidate.exists():
-            config = configparser.ConfigParser()
-            config.read(str(ini_candidate), encoding="utf-8")
-            for section in config.sections():
-                if config.get(section, "Default", fallback="0") == "1":
-                    rel_path = config.get(section, "Path", fallback=None)
-                    is_relative = config.get(section, "IsRelative", fallback="1") == "1"
-                    if rel_path:
-                        profile = (
-                            (ini_candidate.parent / rel_path)
-                            if is_relative
-                            else pathlib.Path(rel_path)
-                        )
-                        logger.debug("Firefox default profile: %s", profile)
-                        return profile
+    candidates: list[pathlib.Path] = []
 
-    logger.debug("profiles.ini not found or no Default=1 — falling back to glob")
-    profiles = list(base.glob("*.default*"))
-    if not profiles:
+    for ini_candidate in [base.parent / "profiles.ini", base / "profiles.ini"]:
+        if not ini_candidate.exists():
+            continue
+        config = configparser.ConfigParser()
+        config.read(str(ini_candidate), encoding="utf-8")
+
+        defaults: list[pathlib.Path] = []
+        others: list[pathlib.Path] = []
+
+        for section in config.sections():
+            rel_path = config.get(section, "Path", fallback=None)
+            if not rel_path:
+                continue
+            is_relative = config.get(section, "IsRelative", fallback="1") == "1"
+            profile = (
+                (ini_candidate.parent / rel_path)
+                if is_relative
+                else pathlib.Path(rel_path)
+            )
+            if config.get(section, "Default", fallback="0") == "1":
+                defaults.append(profile)
+            else:
+                others.append(profile)
+
+        candidates = defaults + others
+        break
+
+    if not candidates:
+        logger.debug("profiles.ini not found or empty — falling back to glob")
+        candidates = list(base.glob("*.default*"))
+
+    if not candidates:
         raise BrowserNotFoundError("No Firefox profile found.")
-    return profiles[0]
+
+    for profile in candidates:
+        db = profile / "cookies.sqlite"
+        if db.exists():
+            logger.debug("Firefox default profile: %s", profile)
+            return profile
+
+    logger.debug("No profile with cookies.sqlite found, returning: %s", candidates[0])
+    return candidates[0]
 
 
 def get_cookie_firefox() -> str | None:
