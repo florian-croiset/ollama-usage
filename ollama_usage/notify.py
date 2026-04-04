@@ -12,6 +12,7 @@ try:
     from plyer import notification as _plyer_notification
     _HAS_PLYER = True
 except ImportError:
+    _plyer_notification = None
     _HAS_PLYER = False
 
 

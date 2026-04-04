@@ -34,7 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 notify = ["plyer"]
-dev = ["pytest", "pytest-cov"]
+dev    = ["pytest", "pytest-cov", "plyer"]
 
 [project.urls]
 Homepage = "https://github.com/florian-croiset/ollama-usage"

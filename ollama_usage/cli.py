@@ -122,7 +122,37 @@ def main():
         "--notify-threshold", type=float, default=80.0, metavar="PCT",
         help="Threshold for desktop notifications in %% (default: 80, requires --notify)"
     )
-    parser.add_argument("--debug", action="store_true", help="Enable debug logs")
+    parser.add_argument(
+        "--widget",
+        action="store_true",
+        help="Launch desktop widget"
+    )
+    parser.add_argument(
+        "--theme",
+        default="dark",
+        choices=["dark", "light", "minimal"]
+    )
+    parser.add_argument(
+        "--size",
+        default="full",
+        choices=["compact", "full"]
+    )
+    parser.add_argument(
+        "--opacity",
+        type=float,
+        default=0.92,
+        metavar="0.0-1.0"
+    )
+    parser.add_argument(
+        "--position",
+        default="top-left",
+        choices=["top-left", "top-right", "bottom-left", "bottom-right"]
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logs"
+    )
     args = parser.parse_args()
 
     if _HAS_COLOR:
@@ -155,6 +185,18 @@ def main():
                 "pip install ollama-usage[notify]",
                 file=sys.stderr,
             )
+
+        if args.widget:
+            from ollama_usage.widget import launch_widget
+            launch_widget(
+                cookie=cookie,
+                interval=args.interval,
+                theme=args.theme,
+                size=args.size,
+                opacity=args.opacity,
+                position=args.position,
+            )
+            return
 
         if args.watch:
             try:

@@ -192,11 +192,12 @@ class TestSendFallback:
         """_send should log a warning but never raise if plyer is not installed."""
         with patch("ollama_usage.notify._HAS_PLYER", False):
             from ollama_usage.notify import _send
-            _send(title="test", message="test")  # must not raise
+            _send(title="test", message="test")
 
     def test_no_crash_when_plyer_raises(self) -> None:
-        """_send should swallow plyer exceptions and log them."""
-        with patch("ollama_usage.notify._HAS_PLYER", True):
-            with patch("ollama_usage.notify._plyer_notification.notify", side_effect=RuntimeError("OS error")):
-                from ollama_usage.notify import _send
-                _send(title="test", message="test")  # must not raise
+    """_send should swallow plyer exceptions and log them."""
+    with patch("ollama_usage.notify._HAS_PLYER", True):
+        with patch("ollama_usage.notify._plyer_notification") as mock_notif:
+            mock_notif.notify.side_effect = RuntimeError("OS error")
+            from ollama_usage.notify import _send
+            _send(title="test", message="test")
