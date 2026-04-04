@@ -7,6 +7,7 @@ import sys
 import itertools
 from importlib.metadata import version as get_version
 from ollama_usage.exceptions import OllamaUsageError, NetworkError
+from ollama_usage.notify import check_and_notify, notify_available, NotifyState
 from ollama_usage.scraper import get_usage
 from ollama_usage.cookie import (
     get_cookie_auto,
@@ -113,6 +114,14 @@ def main():
         "--quiet", action="store_true",
         help="Suppress all output — only set exit code (useful with --alert)"
     )
+    parser.add_argument(
+        "--notify", action="store_true",
+        help="Send desktop notifications when quota exceeds threshold (requires plyer)"
+    )
+    parser.add_argument(
+        "--notify-threshold", type=float, default=80.0, metavar="PCT",
+        help="Threshold for desktop notifications in %% (default: 80, requires --notify)"
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug logs")
     args = parser.parse_args()
 
@@ -138,6 +147,15 @@ def main():
 
         alert_triggered = False
 
+        notify_state = NotifyState()
+
+        if args.notify and not notify_available():
+            print(
+                "Warning: --notify requires plyer. Install it with: "
+                "pip install ollama-usage[notify]",
+                file=sys.stderr,
+            )
+
         if args.watch:
             try:
                 while True:
@@ -145,6 +163,8 @@ def main():
                     try:
                         data = get_usage(cookie)
                         display(data, args.json, args.quiet)
+                        if args.notify:
+                            check_and_notify(data, args.notify_threshold, notify_state)
                         if _check_alert(data, args.alert, args.quiet):
                             alert_triggered = True
                     except NetworkError as e:
@@ -155,6 +175,8 @@ def main():
         else:
             data = get_usage(cookie)
             display(data, args.json, args.quiet)
+            if args.notify:
+                check_and_notify(data, args.notify_threshold, notify_state)
             if _check_alert(data, args.alert, args.quiet):
                 alert_triggered = True
 
