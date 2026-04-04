@@ -18,6 +18,10 @@ This library fills that gap by reading your session cookie and scraping `ollama.
 pip install git+https://github.com/florian-croiset/ollama-usage
 ```
 
+### With desktop notifications support
+```bash
+pip install "ollama-usage[notify] @ git+https://github.com/florian-croiset/ollama-usage"
+```
 ---
 
 ## CLI Usage
@@ -45,6 +49,18 @@ ollama-usage --alert 80
 
 # Quiet mode — no output, only exit code (useful in scripts/cron)
 ollama-usage --quiet --alert 80
+
+# One-shot — notify if usage exceeds 80% (default threshold)
+ollama-usage --notify
+
+# One-shot — notify if usage exceeds 75%
+ollama-usage --notify --notify-threshold 75
+
+# Watch mode — notify when threshold is crossed, no spam between ticks
+ollama-usage --notify --watch
+
+# Watch mode — custom threshold and refresh interval
+ollama-usage --notify --watch --notify-threshold 75 --interval 60
 
 # Debug mode
 ollama-usage --debug
@@ -98,6 +114,31 @@ ollama-usage --quiet --alert 90 || notify-send "Ollama quota warning"
 if ! ollama-usage --quiet --alert 75; then
   echo "Quota running low!"
 fi
+```
+
+---
+
+## Desktop notifications
+
+`--notify` sends a native desktop notification when session **or** weekly usage crosses a threshold.  
+Requires the `notify` extra: `pip install "ollama-usage[notify] @ git+https://..."`
+
+Two levels are fired automatically:
+- ⚠️ **Warning** — at the configured threshold (default: 80%)
+- 🔴 **Critical** — 15% above the threshold (capped at 100%)
+
+Each level notifies **once per threshold crossing** — no spam during `--watch`.  
+If usage drops back below the threshold, the notification will fire again if it rises once more.
+```bash
+# One-shot — notify if usage exceeds 80%
+ollama-usage --notify
+
+# Custom threshold
+ollama-usage --notify --notify-threshold 75
+
+# Continuous monitoring with notifications
+ollama-usage --notify --watch
+ollama-usage --notify --watch --notify-threshold 75 --interval 60
 ```
 
 ---
@@ -163,14 +204,13 @@ Then pass it with `--cookie` or directly in Python.
 
 ---
 
-## Windows note
+## Security note
 
-On Windows, you may see a security prompt:
+Depending on your operating system and browser, you may see a security prompt asking for permission to access your browser cookies or local browser data.
 
-> **python.exe is trying to access your Mozilla Firefox cookies**
+This is expected — the library reads your local browser cookie database to authenticate.
 
-This is expected — the library reads your local cookie database to authenticate.  
-Click **Allow** to proceed.
+Allow access to continue.
 
 ---
 
@@ -182,6 +222,7 @@ Click **Allow** to proceed.
 - [x] `--watch` mode
 - [x] Colored output
 - [x] `--alert` and `--quiet` for scripting
+- [x] Desktop notifications with `--notify`
 - [ ] Safari support
 - [ ] Migrate to official `/api/me` when available ([#12532](https://github.com/ollama/ollama/issues/12532))
 

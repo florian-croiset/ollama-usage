@@ -33,6 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+notify = ["plyer"]
 dev = ["pytest", "pytest-cov"]
 
 [project.urls]
