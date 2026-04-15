@@ -264,3 +264,13 @@ def get_cookie_auto() -> str:
         "No Ollama session cookie found in any supported browser. "
         "Pass it manually with --cookie."
     )
+
+
+# --- Environment Variable ---
+
+
+def get_cookie_env() -> str | None:
+    """Read cookie from OLLAMA_BROWSER_COOKIE environment variable."""
+    import os
+
+    return os.environ.get("OLLAMA_BROWSER_COOKIE")
