@@ -11,6 +11,7 @@ from ollama_usage.notify import check_and_notify, notify_available, NotifyState
 from ollama_usage.scraper import get_usage
 from ollama_usage.cookie import (
     get_cookie_auto,
+    get_cookie_env,
     get_cookie_firefox,
     get_cookie_chrome,
     get_cookie_edge,
@@ -173,7 +174,11 @@ def main():
         elif args.browser:
             cookie = BROWSERS[args.browser]()
         else:
-            cookie = get_cookie_auto()
+            env_cookie = get_cookie_env()
+            if env_cookie:
+                cookie = env_cookie
+            else:
+                cookie = get_cookie_auto()
 
         alert_triggered = False
 
