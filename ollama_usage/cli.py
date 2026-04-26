@@ -4,6 +4,7 @@ import json
 import logging
 import sys
 import time
+from typing import Optional
 from importlib.metadata import version as get_version
 
 from ollama_usage.cookie import (
@@ -65,7 +66,7 @@ def display(data: dict, as_json: bool, quiet: bool) -> None:
         print(f"Weekly  : {_color_pct(data['weekly']['used_pct'])} used — reset at {data['weekly']['resets_at']}")
 
 
-def _check_alert(data: dict, threshold: float | None, quiet: bool) -> bool:
+def _check_alert(data: dict, threshold: Optional[float], quiet: bool) -> bool:
     """Return True if any quota exceeds the alert threshold."""
     if threshold is None:
         return False
