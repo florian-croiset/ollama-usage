@@ -7,15 +7,17 @@ Requires tkinter (stdlib). On minimal Linux installs:
 from __future__ import annotations
 
 import json
-import os
-import signal
+import logging
 import pathlib
+import sys
 import threading
 import tkinter as tk
 from datetime import datetime, timezone
 
 from ollama_usage.exceptions import NetworkError, OllamaUsageError
 from ollama_usage.scraper import get_usage
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -104,24 +106,19 @@ def _fmt_countdown(seconds: int) -> str:
     return f"{s}s"
 
 
-def check_dependencies():
+def check_dependencies() -> None:
     """Vérifie les packages critiques avant de lancer l'UI."""
-    import platform
-    system = platform.system()
+    import importlib.util
+    import platform as _platform
+
+    system = _platform.system()
     missing = []
 
-    # Vérification de cryptography (nécessaire pour Chrome/Edge/Brave sur tous OS)
-    try:
-        import cryptography
-    except ImportError:
+    if importlib.util.find_spec("cryptography") is None:
         missing.append("cryptography")
 
-    # Vérification spécifique à Windows
-    if system == "Windows":
-        try:
-            import win32crypt
-        except ImportError:
-            missing.append("pywin32 (pour win32crypt)")
+    if system == "Windows" and importlib.util.find_spec("win32crypt") is None:
+        missing.append("pywin32 (pour win32crypt)")
 
     if missing:
         raise RuntimeError(
@@ -156,7 +153,7 @@ class OllamaWidget:
         self._error: str | None  = None
         self._after_id: str | None = None
         self._is_running: bool = True
-        self._is_fetching = False
+        self._is_fetching = threading.Event()  # thread-safe (remplace le bool)
         self._drag_x = self._drag_y = 0
 
         self._root = tk.Tk()
@@ -246,11 +243,12 @@ class OllamaWidget:
                 state = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
                 saved_x = state.get("x", default_x)
                 saved_y = state.get("y", default_y)
-                
+                if not isinstance(saved_x, int) or not isinstance(saved_y, int):
+                    raise ValueError("State file contains non-integer coordinates")
                 if 0 <= saved_x <= sw - 20 and 0 <= saved_y <= sh - 20:
                     x, y = saved_x, saved_y
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Could not restore widget position: %s", e)
 
         self._root.geometry(f"+{x}+{y}")
 
@@ -284,17 +282,16 @@ class OllamaWidget:
         except Exception:
             pass
         self._root.destroy()
-        os._exit(0)
-
+        sys.exit(0)
     # ---------------------------------------------------------------- data
 
     def _fetch_async(self) -> None:
-        if self._is_fetching:
+        if self._is_fetching.is_set():  # déjà en cours → on skip
             return
-        self._is_fetching = True
+        self._is_fetching.set()
         if self._after_id:
             self._root.after_cancel(self._after_id)
-        threading.Thread(target=self._fetch, daemon=True).start()
+        threading.Thread(target=self._fetch, daemon=True, name="ollama-fetch").start()
 
     def _fetch(self) -> None:
         try:
@@ -305,7 +302,7 @@ class OllamaWidget:
         except OllamaUsageError as exc:
             self._error = str(exc)
         finally:
-            self._is_fetching = False
+            self._is_fetching.clear()  # libère le verrou dans tous les cas
             if self._is_running:
                 try:
                     self._root.after(0, self._draw)

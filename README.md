@@ -39,6 +39,13 @@ ollama-usage --browser chrome
 # Pass cookie manually
 ollama-usage --cookie YOUR_SESSION_COOKIE
 
+# Pass cookie via environment variable
+export OLLAMA_BROWSER_COOKIE=YOUR_SESSION_COOKIE
+ollama-usage
+
+# One-line usage
+OLLAMA_BROWSER_COOKIE=YOUR_SESSION_COOKIE ollama-usage --json
+
 # Watch mode (refresh every 30s)
 ollama-usage --watch
 ollama-usage --watch --json
@@ -223,6 +230,7 @@ Allow access to continue.
 - [x] Colored output
 - [x] `--alert` and `--quiet` for scripting
 - [x] Desktop notifications with `--notify`
+- [x] Environment variable support (`OLLAMA_BROWSER_COOKIE`)
 - [ ] Safari support
 - [ ] Migrate to official `/api/me` when available ([#12532](https://github.com/ollama/ollama/issues/12532))
 
