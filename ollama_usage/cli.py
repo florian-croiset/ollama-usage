@@ -1,28 +1,35 @@
 import argparse
+import itertools
 import json
-import time
-import os
 import logging
 import sys
-import itertools
+import time
 from importlib.metadata import version as get_version
-from ollama_usage.exceptions import OllamaUsageError, NetworkError
-from ollama_usage.notify import check_and_notify, notify_available, NotifyState
-from ollama_usage.scraper import get_usage
+
 from ollama_usage.cookie import (
     get_cookie_auto,
+    get_cookie_env,
     get_cookie_firefox,
     get_cookie_chrome,
     get_cookie_edge,
     get_cookie_brave,
     get_cookie_opera,
 )
+from ollama_usage.exceptions import OllamaUsageError, NetworkError
+from ollama_usage.notify import check_and_notify, notify_available, NotifyState
+from ollama_usage.scraper import get_usage
+
+logger = logging.getLogger(__name__)
 
 try:
     from colorama import Fore, Style, just_fix_windows_console
     _HAS_COLOR = True
 except ImportError:
     _HAS_COLOR = False
+
+def _sanitize_cookie(value: str) -> str:
+    return value.strip().replace("\r", "").replace("\n", "").replace("\0", "")
+
 
 BROWSERS = {
     "firefox": get_cookie_firefox,
@@ -104,7 +111,7 @@ def main():
     parser.add_argument("--watch", action="store_true", help="Refresh continuously")
     parser.add_argument(
         "--interval", type=int, default=30,
-        help="Refresh interval in seconds (default: 30, requires --watch)"
+        help="Refresh interval in seconds (default: 30, min: 10, max: 3600, requires --watch)"
     )
     parser.add_argument(
         "--alert", type=float, metavar="PCT",
@@ -168,12 +175,20 @@ def main():
                 format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
             )
 
+        interval = max(10, min(3600, args.interval))
+
         if args.cookie:
-            cookie = args.cookie
+            cookie = _sanitize_cookie(args.cookie)
         elif args.browser:
-            cookie = BROWSERS[args.browser]()
+            cookie = _sanitize_cookie(BROWSERS[args.browser]())
         else:
-            cookie = get_cookie_auto()
+            env_cookie = get_cookie_env()
+            if env_cookie:
+                cookie = _sanitize_cookie(env_cookie)
+            else:
+                cookie = _sanitize_cookie(get_cookie_auto())
+
+        logger.debug("Cookie obtained (***)")
 
         alert_triggered = False
 
@@ -190,7 +205,7 @@ def main():
             from ollama_usage.widget import launch_widget
             launch_widget(
                 cookie=cookie,
-                interval=args.interval,
+                interval=interval,
                 theme=args.theme,
                 size=args.size,
                 opacity=args.opacity,
@@ -201,7 +216,9 @@ def main():
         if args.watch:
             try:
                 while True:
-                    os.system("cls" if os.name == "nt" else "clear")
+                    # Effacement terminal sans passer par un shell (évite os.system)
+                    sys.stdout.write("\033[2J\033[H")
+                    sys.stdout.flush()
                     try:
                         data = get_usage(cookie)
                         display(data, args.json, args.quiet)
@@ -210,8 +227,8 @@ def main():
                         if _check_alert(data, args.alert, args.quiet):
                             alert_triggered = True
                     except NetworkError as e:
-                        print(f"Network error: {e} — retrying in {args.interval}s", file=sys.stderr)
-                    _watch_countdown(args.interval)
+                        print(f"Network error: {e} — retrying in {interval}s", file=sys.stderr)
+                    _watch_countdown(interval)
             except KeyboardInterrupt:
                 print("\nStopped.")
         else:

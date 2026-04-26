@@ -5,13 +5,12 @@ from __future__ import annotations
 import configparser
 import contextlib
 import json
+import logging
 import pathlib
 import platform
 import shutil
 import sqlite3
 import tempfile
-import logging
-logger = logging.getLogger(__name__)
 from base64 import b64decode
 from typing import Callable, Generator
 
@@ -20,6 +19,8 @@ from ollama_usage.exceptions import (
     OllamaUsageError,
     UnsupportedOSError,
 )
+
+logger = logging.getLogger(__name__)
 
 _SYSTEM = platform.system()
 _COOKIE_NAME = "__Secure-session"
@@ -58,14 +59,25 @@ def _query_cookie(db_path: str, query: str, params: tuple) -> bytes | None:
 # --- Firefox ---
 
 def _firefox_profiles_dir() -> pathlib.Path:
-    dirs = {
-        "Windows": pathlib.Path.home() / "AppData/Roaming/Mozilla/Firefox/Profiles",
-        "Linux":   pathlib.Path.home() / ".mozilla/firefox",
-        "Darwin":  pathlib.Path.home() / "Library/Application Support/Firefox/Profiles",
-    }
-    if _SYSTEM not in dirs:
-        raise UnsupportedOSError(f"Firefox not supported on {_SYSTEM}")
-    return dirs[_SYSTEM]
+    """Retourne le répertoire des profils Firefox, en tenant compte de Snap/Flatpak sur Linux."""
+    if _SYSTEM == "Windows":
+        return pathlib.Path.home() / "AppData/Roaming/Mozilla/Firefox/Profiles"
+    if _SYSTEM == "Darwin":
+        return pathlib.Path.home() / "Library/Application Support/Firefox/Profiles"
+    if _SYSTEM == "Linux":
+        # Ordre de priorité : installation classique, puis Snap, puis Flatpak
+        candidates = [
+            pathlib.Path.home() / ".mozilla/firefox",
+            pathlib.Path.home() / "snap/firefox/common/.mozilla/firefox",
+            pathlib.Path.home() / ".var/app/org.mozilla.firefox/.mozilla/firefox",
+        ]
+        for path in candidates:
+            if path.exists():
+                logger.debug("Firefox profiles dir: %s", path)
+                return path
+        # Aucun trouvé — retourner le chemin standard pour que l'erreur soit explicite
+        return candidates[0]
+    raise UnsupportedOSError(f"Firefox not supported on {_SYSTEM}")
 
 
 def _get_default_firefox_profile(base: pathlib.Path) -> pathlib.Path:
@@ -148,12 +160,19 @@ def _chromium_key(local_state: pathlib.Path) -> bytes:
         import win32crypt
         return win32crypt.CryptUnprotectData(encrypted_key, None, None, None, 0)[1]
     elif _SYSTEM == "Darwin":
-        import hashlib, subprocess
-        password = subprocess.run(
+        import hashlib
+        import subprocess
+        result = subprocess.run(
             ["security", "find-generic-password", "-a", "Chrome",
              "-s", "Chrome Safe Storage", "-w"],
             capture_output=True, text=True,
-        ).stdout.strip().encode()
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            raise BrowserNotFoundError(
+                f"Could not retrieve Chrome Safe Storage key from Keychain "
+                f"(exit {result.returncode}): {result.stderr.strip()}"
+            )
+        password = result.stdout.strip().encode()
         return hashlib.pbkdf2_hmac("sha1", password, b"saltysalt", 1003, 16)
     else:
         import hashlib
@@ -188,15 +207,24 @@ def _chromium_cookie(base: pathlib.Path, cookies_rel: pathlib.Path) -> str | Non
 
 # --- Per-browser public API ---
 
-def _chromium_base(win: str, linux: str, mac: str) -> pathlib.Path:
-    dirs = {
-        "Windows": pathlib.Path.home() / win,
-        "Linux":   pathlib.Path.home() / linux,
-        "Darwin":  pathlib.Path.home() / mac,
-    }
-    if _SYSTEM not in dirs:
-        raise UnsupportedOSError(f"Unsupported OS: {_SYSTEM}")
-    return dirs[_SYSTEM]
+def _chromium_base(win: str, linux: str, mac: str, linux_snap: str | None = None, linux_flatpak: str | None = None) -> pathlib.Path:
+    if _SYSTEM == "Windows":
+        return pathlib.Path.home() / win
+    if _SYSTEM == "Darwin":
+        return pathlib.Path.home() / mac
+    if _SYSTEM == "Linux":
+        # Ordre de priorité : installation classique, puis Snap, puis Flatpak
+        candidates = [pathlib.Path.home() / linux]
+        if linux_snap:
+            candidates.append(pathlib.Path.home() / linux_snap)
+        if linux_flatpak:
+            candidates.append(pathlib.Path.home() / linux_flatpak)
+        for path in candidates:
+            if path.exists():
+                logger.debug("Chromium base dir: %s", path)
+                return path
+        return candidates[0]  # laisse l'erreur se produire normalement
+    raise UnsupportedOSError(f"Unsupported OS: {_SYSTEM}")
 
 
 _CHROMIUM_COOKIES_PATH = pathlib.Path("Default/Network/Cookies")
@@ -204,36 +232,40 @@ _CHROMIUM_COOKIES_PATH = pathlib.Path("Default/Network/Cookies")
 
 def get_cookie_chrome() -> str | None:
     base = _chromium_base(
-        "AppData/Local/Google/Chrome/User Data",
-        ".config/google-chrome",
-        "Library/Application Support/Google/Chrome",
+        win="AppData/Local/Google/Chrome/User Data",
+        linux=".config/google-chrome",
+        mac="Library/Application Support/Google/Chrome",
+        linux_snap="snap/chromium/common/chromium/Default",
+        linux_flatpak=".var/app/com.google.Chrome/config/google-chrome",
     )
     return _chromium_cookie(base, _CHROMIUM_COOKIES_PATH)
 
 
 def get_cookie_edge() -> str | None:
     base = _chromium_base(
-        "AppData/Local/Microsoft/Edge/User Data",
-        ".config/microsoft-edge",
-        "Library/Application Support/Microsoft Edge",
+        win="AppData/Local/Microsoft/Edge/User Data",
+        linux=".config/microsoft-edge",
+        mac="Library/Application Support/Microsoft Edge",
+        linux_flatpak=".var/app/com.microsoft.Edge/config/microsoft-edge",
     )
     return _chromium_cookie(base, _CHROMIUM_COOKIES_PATH)
 
 
 def get_cookie_brave() -> str | None:
     base = _chromium_base(
-        "AppData/Local/BraveSoftware/Brave-Browser/User Data",
-        ".config/BraveSoftware/Brave-Browser",
-        "Library/Application Support/BraveSoftware/Brave-Browser",
+        win="AppData/Local/BraveSoftware/Brave-Browser/User Data",
+        linux=".config/BraveSoftware/Brave-Browser",
+        mac="Library/Application Support/BraveSoftware/Brave-Browser",
+        linux_flatpak=".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser",
     )
     return _chromium_cookie(base, _CHROMIUM_COOKIES_PATH)
 
 
 def get_cookie_opera() -> str | None:
     base = _chromium_base(
-        "AppData/Roaming/Opera Software/Opera Stable",
-        ".config/opera",
-        "Library/Application Support/com.operasoftware.Opera",
+        win="AppData/Roaming/Opera Software/Opera Stable",
+        linux=".config/opera",
+        mac="Library/Application Support/com.operasoftware.Opera",
     )
     return _chromium_cookie(base, pathlib.Path("Cookies"))
 
@@ -264,3 +296,13 @@ def get_cookie_auto() -> str:
         "No Ollama session cookie found in any supported browser. "
         "Pass it manually with --cookie."
     )
+
+
+# --- Environment Variable ---
+
+
+def get_cookie_env() -> str | None:
+    """Read cookie from OLLAMA_BROWSER_COOKIE environment variable."""
+    import os
+
+    return os.environ.get("OLLAMA_BROWSER_COOKIE")

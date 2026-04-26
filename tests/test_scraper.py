@@ -254,3 +254,145 @@ class TestParseErrors:
         from ollama_usage.exceptions import OllamaUsageError
         with pytest.raises(OllamaUsageError):
             parse_html("")
+
+# ---------------------------------------------------------------------------
+# _fetch_html — couverture réseau (lignes 52-70)
+# ---------------------------------------------------------------------------
+
+class TestFetchHtml:
+    """Tests pour _fetch_html via mock urllib — couvre les chemins réseau."""
+
+    def _make_response(self, body: str, status: int = 200):
+        """Crée un faux objet response compatible urllib context manager."""
+        from unittest.mock import MagicMock
+        resp = MagicMock()
+        resp.read.return_value = body.encode("utf-8")
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        return resp
+
+    def test_returns_html_on_success(self) -> None:
+        from unittest.mock import patch
+        from ollama_usage.scraper import _fetch_html
+
+        fake_resp = self._make_response("<html>ok</html>")
+        with patch("urllib.request.urlopen", return_value=fake_resp):
+            result = _fetch_html("my-cookie")
+        assert result == "<html>ok</html>"
+
+    def test_raises_network_error_on_url_error(self) -> None:
+        import urllib.error
+        from unittest.mock import patch
+        from ollama_usage.scraper import _fetch_html
+        from ollama_usage.exceptions import NetworkError
+
+        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timeout")):
+            with pytest.raises(NetworkError, match="Failed to reach"):
+                _fetch_html("my-cookie")
+
+    def test_raises_parse_error_on_invalid_utf8(self) -> None:
+        from unittest.mock import patch, MagicMock
+        from ollama_usage.scraper import _fetch_html
+        from ollama_usage.exceptions import ParseError
+
+        resp = MagicMock()
+        resp.read.return_value = b"\xff\xfe invalid utf8"
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=resp):
+            with pytest.raises(ParseError, match="UTF-8"):
+                _fetch_html("my-cookie")
+
+    def test_cookie_not_logged(self, caplog) -> None:
+        """Le cookie ne doit jamais apparaître dans les logs, même en DEBUG."""
+        import logging
+        from unittest.mock import patch
+        from ollama_usage.scraper import _fetch_html
+
+        fake_resp = self._make_response("<html>ok</html>")
+        with patch("urllib.request.urlopen", return_value=fake_resp):
+            with caplog.at_level(logging.DEBUG, logger="ollama_usage.scraper"):
+                _fetch_html("super-secret-cookie-value")
+
+        for record in caplog.records:
+            assert "super-secret-cookie-value" not in record.getMessage()
+
+
+# ---------------------------------------------------------------------------
+# get_usage — intégration scraper complet
+# ---------------------------------------------------------------------------
+
+class TestGetUsage:
+
+    def _make_response(self, body: str):
+        from unittest.mock import MagicMock
+        resp = MagicMock()
+        resp.read.return_value = body.encode("utf-8")
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        return resp
+
+    def test_get_usage_returns_dict(self) -> None:
+        from unittest.mock import patch
+        from ollama_usage.scraper import get_usage
+
+        html = """
+        <span class="capitalize">free</span>
+        <span class="text-sm">0.0% used</span>
+        <span class="text-sm">33.3% used</span>
+        <div class="local-time" data-time="2026-04-04T17:00:00Z"></div>
+        <div class="local-time" data-time="2026-04-06T00:00:00Z"></div>
+        """
+        with patch("urllib.request.urlopen", return_value=self._make_response(html)):
+            result = get_usage("my-cookie")
+
+        assert result["plan"] == "free"
+        assert result["session"]["used_pct"] == 0.0
+        assert result["weekly"]["used_pct"] == 33.3
+
+    def test_get_usage_propagates_network_error(self) -> None:
+        import urllib.error
+        from unittest.mock import patch
+        from ollama_usage.scraper import get_usage
+        from ollama_usage.exceptions import NetworkError
+
+        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("down")):
+            with pytest.raises(NetworkError):
+                get_usage("my-cookie")
+
+    def test_get_usage_propagates_auth_error(self) -> None:
+        from unittest.mock import patch
+        from ollama_usage.scraper import get_usage
+        from ollama_usage.exceptions import AuthError
+
+        html = "<html>redirecting to /login</html>"
+        with patch("urllib.request.urlopen", return_value=self._make_response(html)):
+            with pytest.raises(AuthError):
+                get_usage("expired-cookie")
+
+
+# ---------------------------------------------------------------------------
+# __init__.py — exports publics
+# ---------------------------------------------------------------------------
+
+class TestPublicExports:
+
+    def test_all_exceptions_importable_from_package(self) -> None:
+        from ollama_usage import (
+            OllamaUsageError,
+            AuthError,
+            ParseError,
+            NetworkError,
+            BrowserNotFoundError,
+            UnsupportedOSError,
+        )
+        assert issubclass(AuthError, OllamaUsageError)
+        assert issubclass(ParseError, OllamaUsageError)
+        assert issubclass(NetworkError, OllamaUsageError)
+        assert issubclass(BrowserNotFoundError, OllamaUsageError)
+        assert issubclass(UnsupportedOSError, OllamaUsageError)
+
+    def test_get_usage_importable_from_package(self) -> None:
+        from ollama_usage import get_usage
+        assert callable(get_usage)

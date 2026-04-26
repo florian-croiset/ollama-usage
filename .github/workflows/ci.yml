@@ -6,15 +6,41 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  lint:
+    name: Lint & Security
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install lint tools
+        run: pip install ruff bandit
+      - name: Ruff
+        run: ruff check ollama_usage/
+      - name: Bandit
+        # B404/B603/B607 : subprocess macOS chemin système connu (non injectable)
+        # B310 : urlopen sur URL https:// hardcodée
+        # B110 : except-pass intentionnels dans le widget Tkinter
+        run: bandit -r ollama_usage/ --skip B404,B603,B607,B310,B110
+
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
       - name: Install
         run: pip install -e ".[dev]"
-      - name: Test
-        run: pytest tests/
+      - name: Test with coverage
+        run: pytest tests/ --cov=ollama_usage --cov-report=term-missing

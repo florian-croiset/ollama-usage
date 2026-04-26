@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 import re
+import ssl
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-import logging
-logger = logging.getLogger(__name__)
 
 from ollama_usage.exceptions import AuthError, NetworkError, ParseError
 
+logger = logging.getLogger(__name__)
+
 _SETTINGS_URL = "https://ollama.com/settings"
 _TIMEOUT = 10  # seconds
+_SSL_CONTEXT = ssl.create_default_context()
 
 
 @dataclass
@@ -45,7 +48,7 @@ class UsageData:
 
 def _fetch_html(cookie: str) -> str:
     """Fetch the settings page HTML using the provided session cookie."""
-    logger.debug("Fetching %s", _SETTINGS_URL)
+    logger.debug("Fetching %s (cookie: ***)", _SETTINGS_URL)
     req = urllib.request.Request(
         _SETTINGS_URL,
         headers={
@@ -54,10 +57,21 @@ def _fetch_html(cookie: str) -> str:
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as response:
-            html = response.read().decode("utf-8")
+        with urllib.request.urlopen(req, timeout=_TIMEOUT, context=_SSL_CONTEXT) as response:
+            raw = response.read()
+            try:
+                html = raw.decode("utf-8")
+            except UnicodeDecodeError as e:
+                raise ParseError(f"Response is not valid UTF-8: {e}") from e
             logger.debug("Response received (%d chars)", len(html))
             return html
+    except urllib.error.HTTPError as e:
+        # 401/403 = cookie invalide ou expiré → AuthError, pas NetworkError
+        if e.code in (401, 403):
+            raise AuthError(
+                f"Access denied (HTTP {e.code}) — cookie is invalid or expired."
+            ) from e
+        raise NetworkError(f"HTTP error {e.code} reaching {_SETTINGS_URL}") from e
     except urllib.error.URLError as e:
         raise NetworkError(f"Failed to reach {_SETTINGS_URL}: {e}") from e
 
