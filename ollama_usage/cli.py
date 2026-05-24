@@ -55,15 +55,30 @@ def _color_pct(pct: float) -> str:
     return color + text + Style.RESET_ALL
 
 
+def _fmt_model_line(model: str, requests: int, share_pct: float) -> str:
+    """Format one model breakdown line, padded for alignment."""
+    # Truncate long model names
+    max_name = 22
+    name = model if len(model) <= max_name else model[: max_name - 1] + "…"
+    return f"    {name:<{max_name}}  {requests:>4} req  ({share_pct:5.1f}%)"
+
+
 def display(data: dict, as_json: bool, quiet: bool) -> None:
     if quiet:
         return
     if as_json:
         print(json.dumps(data, indent=2))
-    else:
-        print(f"Plan    : {data['plan']}")
-        print(f"Session : {_color_pct(data['session']['used_pct'])} used — reset at {data['session']['resets_at']}")
-        print(f"Weekly  : {_color_pct(data['weekly']['used_pct'])} used — reset at {data['weekly']['resets_at']}")
+        return
+
+    print(f"Plan    : {data['plan']}")
+
+    for label, period in [("Session", data["session"]), ("Weekly", data["weekly"])]:
+        print(
+            f"{label:<7} : {_color_pct(period['used_pct'])} used"
+            f" — reset at {period['resets_at']}"
+        )
+        for m in period.get("models", []):
+            print(_fmt_model_line(m["model"], m["requests"], m["share_pct"]))
 
 
 def _check_alert(data: dict, threshold: Optional[float], quiet: bool) -> bool:
@@ -217,7 +232,6 @@ def main():
         if args.watch:
             try:
                 while True:
-                    # Effacement terminal sans passer par un shell (évite os.system)
                     sys.stdout.write("\033[2J\033[H")
                     sys.stdout.flush()
                     try:

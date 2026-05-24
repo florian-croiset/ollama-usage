@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.2] - 2026-05-24
+
+### Fixed
+- `_extract_percentages` was silently returning the session percentage for
+  both session and weekly on the new Ollama HTML (duplicated values via
+  `aria-label`). Now targets the unambiguous `aria-label` on the track divs,
+  with a fallback for older HTML.
+
+### Added
+- Per-model usage breakdown: `session.models` and `weekly.models` now expose
+  `model`, `requests`, `share_pct`, and `color` for each model segment.
+- CLI `display()` shows the model breakdown indented under each period.
+- Widget (full mode): bar is now segmented by model with the colors from the
+  site; a legend with colored squares and request counts appears below each bar.
+
+
 ## [0.1.1] - 2026-04-26
 
 ### Fixed
