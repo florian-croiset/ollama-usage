@@ -67,11 +67,12 @@ POSITIONS = {
 
 # Widget dimensions
 _W_COMPACT = (240, 72)
-_W_FULL    = (240, 172)
+_W_FULL    = (240, 200)   # étendu pour accueillir le breakdown modèles
 _BAR_W     = 200
 _BAR_H     = 8
 _PAD       = 14
 _FONT      = "Helvetica"
+_MAX_MODELS = 3           # nombre max de modèles affichés par période
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +105,10 @@ def _fmt_countdown(seconds: int) -> str:
     if m:
         return f"{m}m {s:02d}s"
     return f"{s}s"
+
+
+def _truncate(text: str, max_len: int) -> str:
+    return text if len(text) <= max_len else text[: max_len - 1] + "…"
 
 
 def check_dependencies() -> None:
@@ -146,14 +151,14 @@ class OllamaWidget:
         self._cookie      = cookie
         self._interval    = max(10, interval)
         self._theme       = THEMES.get(theme, THEMES["dark"])
-        self._size        = size       # "compact" | "full"
+        self._size        = size
         self._opacity     = max(0.1, min(1.0, opacity))
-        self._position    = position   # named anchor or None (restored)
+        self._position    = position
         self._data: dict | None  = None
         self._error: str | None  = None
         self._after_id: str | None = None
         self._is_running: bool = True
-        self._is_fetching = threading.Event()  # thread-safe (remplace le bool)
+        self._is_fetching = threading.Event()
         self._drag_x = self._drag_y = 0
 
         self._root = tk.Tk()
@@ -191,7 +196,6 @@ class OllamaWidget:
         )
         self._canvas.pack(fill="both", expand=True)
 
-        # Drag bindings on both root and canvas
         for widget in (self._root, self._canvas):
             widget.bind("<ButtonPress-1>",   self._on_drag_start)
             widget.bind("<B1-Motion>",       self._on_drag_motion)
@@ -283,10 +287,11 @@ class OllamaWidget:
             pass
         self._root.destroy()
         sys.exit(0)
+
     # ---------------------------------------------------------------- data
 
     def _fetch_async(self) -> None:
-        if self._is_fetching.is_set():  # déjà en cours → on skip
+        if self._is_fetching.is_set():
             return
         self._is_fetching.set()
         if self._after_id:
@@ -302,7 +307,7 @@ class OllamaWidget:
         except OllamaUsageError as exc:
             self._error = str(exc)
         finally:
-            self._is_fetching.clear()  # libère le verrou dans tous les cas
+            self._is_fetching.clear()
             if self._is_running:
                 try:
                     self._root.after(0, self._draw)
@@ -326,11 +331,9 @@ class OllamaWidget:
         w, h   = _W_COMPACT
         p      = _PAD
 
-        # Status dot
         dot = t["green"] if self._data and not self._error else t["red"]
         c.create_text(w - p, p, text="●", anchor="ne",
                       fill=dot, font=(_FONT, 8))
-        # App label
         c.create_text(p, p, text="ollama-usage", anchor="nw",
                       fill=t["sub"], font=(_FONT, 8))
 
@@ -377,34 +380,64 @@ class OllamaWidget:
             return
 
         y = p + 22
-        for label, pct, iso in [
-            ("Session", self._data["session"]["used_pct"], self._data["session"]["resets_at"]),
-            ("Weekly",  self._data["weekly"]["used_pct"],  self._data["weekly"]["resets_at"]),
+        for label, pct, iso, models in [
+            ("Session", self._data["session"]["used_pct"],
+             self._data["session"]["resets_at"],
+             self._data["session"].get("models", [])),
+            ("Weekly",  self._data["weekly"]["used_pct"],
+             self._data["weekly"]["resets_at"],
+             self._data["weekly"].get("models", [])),
         ]:
-            color   = _pct_color(pct, t)
-            secs    = _seconds_until(iso)
+            color = _pct_color(pct, t)
+            secs  = _seconds_until(iso)
 
-            # Label + percentage
-            c.create_text(bar_x,      y, text=label,       anchor="nw",
+            # --- Label + pourcentage ---
+            c.create_text(bar_x,      y, text=label,         anchor="nw",
                           fill=t["fg"], font=(_FONT, 9, "bold"))
             c.create_text(bar_x + bw, y, text=f"{pct:.1f}%", anchor="ne",
                           fill=color, font=(_FONT, 9, "bold"))
             y += 14
 
-            # Bar background
+            # --- Barre segmentée par modèle ---
             c.create_rectangle(bar_x, y, bar_x + bw, y + bh,
                                 fill=t["bar_bg"], outline="", width=0)
-            # Bar fill
-            filled = int(bw * min(pct, 100.0) / 100.0)
-            if filled > 0:
-                c.create_rectangle(bar_x, y, bar_x + filled, y + bh,
+            total_fill_w = int(bw * min(pct, 100.0) / 100.0)
+            if models and total_fill_w > 0:
+                x_cursor = bar_x
+                for m in models[:_MAX_MODELS]:
+                    seg_w = int(total_fill_w * m["share_pct"] / 100.0)
+                    if seg_w > 0:
+                        c.create_rectangle(
+                            x_cursor, y, x_cursor + seg_w, y + bh,
+                            fill=m["color"], outline="", width=0,
+                        )
+                        x_cursor += seg_w
+            elif total_fill_w > 0:
+                # Fallback monochrome si pas de breakdown
+                c.create_rectangle(bar_x, y, bar_x + total_fill_w, y + bh,
                                    fill=color, outline="", width=0)
             y += bh + 5
 
-            # Countdown
-            c.create_text(bar_x, y, text=f"resets in {_fmt_countdown(secs)}",
+            # --- Légende modèles (max _MAX_MODELS lignes) ---
+            for m in models[:_MAX_MODELS]:
+                dot_x = bar_x + 2
+                # Carré coloré
+                c.create_rectangle(dot_x, y + 1, dot_x + 7, y + 9,
+                                   fill=m["color"], outline="", width=0)
+                # Nom tronqué
+                name = _truncate(m["model"], 15)
+                c.create_text(dot_x + 10, y, text=name, anchor="nw",
+                              fill=t["sub"], font=(_FONT, 8))
+                # Nb requêtes aligné à droite
+                c.create_text(bar_x + bw, y, text=f"{m['requests']}req",
+                              anchor="ne", fill=t["sub"], font=(_FONT, 8))
+                y += 11
+
+            # --- Countdown ---
+            c.create_text(bar_x, y,
+                          text=f"resets in {_fmt_countdown(secs)}",
                           anchor="nw", fill=t["sub"], font=(_FONT, 8))
-            y += 28
+            y += 20
 
     # ---------------------------------------------------------------- run
 
@@ -431,7 +464,7 @@ def launch_widget(
         cookie:   __Secure-session cookie value.
         interval: Refresh interval in seconds (min 10).
         theme:    "dark" | "light" | "minimal".
-        size:     "full" (bars + countdown) | "compact" (text only).
+        size:     "full" (bars + modèles + countdown) | "compact" (text only).
         opacity:  Window opacity between 0.1 and 1.0.
         position: "top-left" | "top-right" | "bottom-left" | "bottom-right"
                   or None to restore last saved position.

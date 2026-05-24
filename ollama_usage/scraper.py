@@ -7,7 +7,7 @@ import re
 import ssl
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ollama_usage.exceptions import AuthError, NetworkError, ParseError
 
@@ -19,9 +19,18 @@ _SSL_CONTEXT = ssl.create_default_context()
 
 
 @dataclass
+class ModelUsage:
+    model: str
+    requests: int
+    share_pct: float   # % relatif occupé dans le fill (somme = ~100%)
+    color: str = "#888888"  # couleur hex du segment (issue du HTML)
+
+
+@dataclass
 class PeriodUsage:
     used_pct: float
     resets_at: str
+    models: list[ModelUsage] = field(default_factory=list)
 
 
 @dataclass
@@ -31,16 +40,25 @@ class UsageData:
     weekly: PeriodUsage
 
     def to_dict(self) -> dict:
+        def _period(p: PeriodUsage) -> dict:
+            return {
+                "used_pct": p.used_pct,
+                "resets_at": p.resets_at,
+                "models": [
+                    {
+                        "model": m.model,
+                        "requests": m.requests,
+                        "share_pct": m.share_pct,
+                        "color": m.color,
+                    }
+                    for m in p.models
+                ],
+            }
+
         return {
             "plan": self.plan,
-            "session": {
-                "used_pct": self.session.used_pct,
-                "resets_at": self.session.resets_at,
-            },
-            "weekly": {
-                "used_pct": self.weekly.used_pct,
-                "resets_at": self.weekly.resets_at,
-            },
+            "session": _period(self.session),
+            "weekly": _period(self.weekly),
         }
 
 
@@ -66,7 +84,6 @@ def _fetch_html(cookie: str) -> str:
             logger.debug("Response received (%d chars)", len(html))
             return html
     except urllib.error.HTTPError as e:
-        # 401/403 = cookie invalide ou expiré → AuthError, pas NetworkError
         if e.code in (401, 403):
             raise AuthError(
                 f"Access denied (HTTP {e.code}) — cookie is invalid or expired."
@@ -84,6 +101,7 @@ def _check_auth(html: str) -> None:
         raise AuthError("Cookie is invalid or expired — please refresh it.")
     logger.debug("Auth check passed")
 
+
 # --- Parsing ---
 
 def _extract_plan(html: str) -> str:
@@ -94,7 +112,18 @@ def _extract_plan(html: str) -> str:
 
 
 def _extract_percentages(html: str) -> tuple[float, float]:
-    matches = re.findall(r'([\d.]+)%\s*used', html)
+    # Cible les aria-label des divs track : unique par période, insensible au
+    # formatage multi-ligne des <span> et aux doublons introduits par le nouveau HTML.
+    matches = re.findall(
+        r'aria-label="(?:Session|Weekly) usage\s+([\d.]+)%\s*used"',
+        html,
+    )
+    if len(matches) < 2:
+        # Fallback sur les <span class="text-sm..."> (ancien HTML sans aria-label)
+        matches = re.findall(
+            r'<span[^>]*class="text-sm[^"]*"[^>]*>\s*([\d.]+)%\s*used[\s\S]*?</span',
+            html,
+        )
     if len(matches) < 2:
         raise ParseError(f"Expected 2 usage percentages, found {len(matches)}.")
     return float(matches[0]), float(matches[1])
@@ -107,18 +136,52 @@ def _extract_reset_times(html: str) -> tuple[str, str]:
     return matches[0], matches[1]
 
 
+def _parse_fill_models(fill_html: str) -> list[ModelUsage]:
+    """Extrait les ModelUsage depuis le contenu d'un div usage-meter__fill."""
+    entries = re.findall(
+        r'style="width:\s*([\d.]+)%;\s*background:\s*(#[0-9a-fA-F]{6})[^"]*"'
+        r'[^>]*data-model="([^"]+)"[^>]*data-requests="(\d+)"',
+        fill_html,
+    )
+    return [
+        ModelUsage(model=model, requests=int(reqs), share_pct=float(share), color=color)
+        for share, color, model, reqs in entries
+    ]
+
+
+def _extract_models_per_period(html: str) -> tuple[list[ModelUsage], list[ModelUsage]]:
+    """Retourne (session_models, weekly_models) en splitant sur 'Weekly usage'."""
+    parts = html.split("Weekly usage", 1)
+    session_html = parts[0]
+    weekly_html = parts[1] if len(parts) > 1 else ""
+
+    def _models_from(fragment: str) -> list[ModelUsage]:
+        fill = re.search(
+            r'class="usage-meter__fill"[^>]*>(.*?)</div>',
+            fragment,
+            re.DOTALL,
+        )
+        return _parse_fill_models(fill.group(1)) if fill else []
+
+    return _models_from(session_html), _models_from(weekly_html)
+
+
 def parse_html(html: str) -> dict:
     """Parse the settings page HTML and return a usage dict."""
     _check_auth(html)
     plan = _extract_plan(html)
     session_pct, weekly_pct = _extract_percentages(html)
     session_time, weekly_time = _extract_reset_times(html)
+    session_models, weekly_models = _extract_models_per_period(html)
     logger.debug("Parsing HTML...")
-    logger.debug("Parsed: plan=%s session=%.1f%% weekly=%.1f%%", plan, session_pct, weekly_pct)
+    logger.debug(
+        "Parsed: plan=%s session=%.1f%% (%d models) weekly=%.1f%% (%d models)",
+        plan, session_pct, len(session_models), weekly_pct, len(weekly_models),
+    )
     return UsageData(
         plan=plan,
-        session=PeriodUsage(used_pct=session_pct, resets_at=session_time),
-        weekly=PeriodUsage(used_pct=weekly_pct, resets_at=weekly_time),
+        session=PeriodUsage(used_pct=session_pct, resets_at=session_time, models=session_models),
+        weekly=PeriodUsage(used_pct=weekly_pct, resets_at=weekly_time, models=weekly_models),
     ).to_dict()
 
 

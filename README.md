@@ -84,7 +84,11 @@ ollama-usage --help
 ```
 Plan    : free
 Session : 0.0% used — resets at 2026-04-04T17:00:00Z
+  qwen3-coder:480b        78 req  ( 61.3%)
+  gemma4:31b             170 req  ( 38.7%)
 Weekly  : 33.3% used — resets at 2026-04-06T00:00:00Z
+  qwen3-coder:480b        78 req  ( 45.7%)
+  gemma4:31b             262 req  ( 54.3%)
 ```
 
 Session and weekly percentages are color-coded in the terminal:
@@ -97,11 +101,19 @@ Session and weekly percentages are color-coded in the terminal:
   "plan": "free",
   "session": {
     "used_pct": 0.0,
-    "resets_at": "2026-04-04T00:00:00Z"
+    "resets_at": "2026-04-04T00:00:00Z",
+    "models": [
+      { "model": "qwen3-coder:480b", "requests": 78,  "share_pct": 61.3, "color": "#ffcc00" },
+      { "model": "gemma4:31b",       "requests": 170,   "share_pct": 38.7,  "color": "#5ac8fa" }
+    ]
   },
   "weekly": {
     "used_pct": 33.3,
-    "resets_at": "2026-04-06T00:00:00Z"
+    "resets_at": "2026-04-06T00:00:00Z",
+    "models": [
+      { "model": "qwen3-coder:480b", "requests": 78,  "share_pct": 45.7, "color": "#ffcc00" },
+      { "model": "gemma4:31b",       "requests": 262,  "share_pct": 54.3, "color": "#5ac8fa" }
+    ]
   }
 }
 ```
@@ -161,6 +173,8 @@ usage = get_usage(cookie)
 print(usage["plan"])                        # "free"
 print(usage["session"]["used_pct"])         # 0.0
 print(usage["weekly"]["resets_at"])         # "2026-04-06T00:00:00Z"
+for m in usage["session"]["models"]:
+    print(m["model"], m["requests"])        # "qwen3-coder:480b" 78
 ```
 
 ### Error handling
@@ -231,6 +245,7 @@ Allow access to continue.
 - [x] `--alert` and `--quiet` for scripting
 - [x] Desktop notifications with `--notify`
 - [x] Environment variable support (`OLLAMA_BROWSER_COOKIE`)
+- [x] Per-model usage breakdown (`session.models`, `weekly.models`)
 - [ ] Safari support
 - [ ] Migrate to official `/api/me` when available ([#12532](https://github.com/ollama/ollama/issues/12532))
 
