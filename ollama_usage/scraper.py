@@ -156,13 +156,15 @@ def _extract_models_per_period(html: str) -> tuple[list[ModelUsage], list[ModelU
     weekly_html = parts[1] if len(parts) > 1 else ""
 
     def _models_from(fragment: str) -> list[ModelUsage]:
-        fill = re.search(
-            r'class="usage-meter__fill"[^>]*>(.*?)</div>',
+        entries = re.findall(
+            r'style="width:\s*([\d.]+)%;\s*background:\s*(#[0-9a-fA-F]{6})[^"]*"'
+            r'[^>]*data-model="([^"]+)"[^>]*data-requests="(\d+)"',
             fragment,
-            re.DOTALL,
         )
-        return _parse_fill_models(fill.group(1)) if fill else []
-
+        return [
+            ModelUsage(model=model, requests=int(reqs), share_pct=float(share), color=color)
+            for share, color, model, reqs in entries
+        ]
     return _models_from(session_html), _models_from(weekly_html)
 
 
