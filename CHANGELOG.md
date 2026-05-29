@@ -5,11 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## Unreleased 
+## Unreleased
 
 ### Fixed
 - Model breakdown now correctly parsed after Ollama updated their settings
   page HTML from BEM class names to Tailwind utility classes
+- Raise a clear error (exit 1) when the browser returns no Ollama session
+  cookie, instead of crashing with `AttributeError: 'NoneType'`
+- Critical notifications now fire independently of the warning check
+  (`elif` → `if` in notification logic)
+- Add validation guards for `--alert`, `--notify-threshold` and `--opacity`
+  arguments (range checks with `parser.error`)
 
 
 ## [0.1.2] - 2026-05-24
