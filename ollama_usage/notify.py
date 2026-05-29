@@ -88,6 +88,16 @@ def check_and_notify(data: dict, threshold: float, state: NotifyState) -> None:
         resets_at: str = data[key]["resets_at"]
         label = _label(key)
 
+        # Warning check
+        if state.should_warn(key, pct, threshold):
+            _send(
+                title=f"⚠️ Ollama {label} quota warning",
+                message=(
+                    f"{label} usage at {pct:.1f}% (threshold: {threshold:.0f}%)"
+                    f" — resets at {resets_at}"
+                ),
+            )
+
         # Critical check first (higher bar, only after warning already set)
         if state.should_critical(key, pct, critical_threshold):
             _send(
@@ -97,15 +107,6 @@ def check_and_notify(data: dict, threshold: float, state: NotifyState) -> None:
                 ),
             )
 
-        # Warning check
-        elif state.should_warn(key, pct, threshold):
-            _send(
-                title=f"⚠️ Ollama {label} quota warning",
-                message=(
-                    f"{label} usage at {pct:.1f}% (threshold: {threshold:.0f}%)"
-                    f" — resets at {resets_at}"
-                ),
-            )
 
 
 def notify_available() -> bool:

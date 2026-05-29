@@ -183,6 +183,12 @@ def main():
 
     if args.interval != 30 and not args.watch:
         print("Warning: --interval has no effect without --watch.", file=sys.stderr)
+    if args.alert is not None and not (0 <= args.alert <= 100):
+        parser.error("--alert must be between 0 and 100")
+    if not (0 <= args.notify_threshold <= 100):
+        parser.error("--notify-threshold must be between 0 and 100")
+    if not (0.0 <= args.opacity <= 1.0):
+        parser.error("--opacity must be between 0.0 and 1.0")
 
     try:
         if args.debug:
