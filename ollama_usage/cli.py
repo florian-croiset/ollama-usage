@@ -29,6 +29,12 @@ except ImportError:
     _HAS_COLOR = False
 
 def _sanitize_cookie(value: str) -> str:
+    if value is None:
+        raise OllamaUsageError(
+            "No Ollama session cookie found.\n"
+            "Make sure you are logged in to ollama.com in your browser,\n"
+            "or pass the cookie manually with --cookie."
+        )
     return value.strip().replace("\r", "").replace("\n", "").replace("\0", "")
 
 
@@ -202,7 +208,16 @@ def main():
         if args.cookie:
             cookie = _sanitize_cookie(args.cookie)
         elif args.browser:
-            cookie = _sanitize_cookie(BROWSERS[args.browser]())
+            raw = BROWSERS[args.browser]()
+            if raw is None:
+                print(
+                    f"Error: No Ollama session cookie found in {args.browser}.\n"
+                    "Make sure you are logged in to ollama.com in that browser,\n"
+                    "or pass the cookie manually with --cookie.",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+            cookie = _sanitize_cookie(raw)
         else:
             env_cookie = get_cookie_env()
             if env_cookie:
