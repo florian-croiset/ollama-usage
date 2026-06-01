@@ -35,7 +35,15 @@ def _copy_db(path: pathlib.Path) -> Generator[str, None, None]:
     if not path.exists():
         raise BrowserNotFoundError(f"Cookie database not found: {path}")
     tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
-    shutil.copy2(str(path), tmp.name)
+    try:
+        shutil.copy2(str(path), tmp.name)
+    except PermissionError as exc:
+        tmp.close()
+        pathlib.Path(tmp.name).unlink(missing_ok=True)
+        raise BrowserNotFoundError(
+            f"Cannot read cookie database (file locked by another process): {path}\n"
+            "Close the browser and try again, or pass your cookie manually with --cookie."
+        ) from exc
     tmp.close()
     try:
         yield tmp.name
