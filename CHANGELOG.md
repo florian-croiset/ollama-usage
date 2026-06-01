@@ -16,6 +16,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (`elif` → `if` in notification logic)
 - Add validation guards for `--alert`, `--notify-threshold` and `--opacity`
   arguments (range checks with `parser.error`)
+- Handle locked cookie DB on Windows (PermissionError / WinError 32) 
+  by raising a clear BrowserNotFoundError instead of crashing
 
 
 ## [0.1.2] - 2026-05-24
