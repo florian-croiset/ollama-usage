@@ -111,27 +111,6 @@ def _truncate(text: str, max_len: int) -> str:
     return text if len(text) <= max_len else text[: max_len - 1] + "…"
 
 
-def check_dependencies() -> None:
-    """Vérifie les packages critiques avant de lancer l'UI."""
-    import importlib.util
-    import platform as _platform
-
-    system = _platform.system()
-    missing = []
-
-    if importlib.util.find_spec("cryptography") is None:
-        missing.append("cryptography")
-
-    if system == "Windows" and importlib.util.find_spec("win32crypt") is None:
-        missing.append("pywin32 (pour win32crypt)")
-
-    if missing:
-        raise RuntimeError(
-            f"Dépendances manquantes : {', '.join(missing)}. "
-            f"Installe-les avec : pip install {' '.join(['cryptography', 'pywin32'])}"
-        )
-
-
 # ---------------------------------------------------------------------------
 # Widget
 # ---------------------------------------------------------------------------
@@ -469,7 +448,6 @@ def launch_widget(
         position: "top-left" | "top-right" | "bottom-left" | "bottom-right"
                   or None to restore last saved position.
     """
-    check_dependencies()
     try:
         import tkinter  # noqa: F401
     except ImportError:

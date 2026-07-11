@@ -575,3 +575,86 @@ class TestPublicExports:
     def test_get_usage_importable_from_package(self) -> None:
         from ollama_usage import get_usage
         assert callable(get_usage)
+
+
+# ---------------------------------------------------------------------------
+# _fetch_html — erreurs HTTP
+# ---------------------------------------------------------------------------
+
+class TestFetchHtmlHTTPErrors:
+
+    def _http_error(self, code: int):
+        import io
+        import urllib.error
+        return urllib.error.HTTPError(
+            url="https://ollama.com/settings",
+            code=code,
+            msg="error",
+            hdrs=None,
+            fp=io.BytesIO(b""),
+        )
+
+    @pytest.mark.parametrize("code", [401, 403])
+    def test_auth_error_on_401_403(self, code: int) -> None:
+        from unittest.mock import patch
+        from ollama_usage.scraper import _fetch_html
+
+        with patch("urllib.request.urlopen", side_effect=self._http_error(code)):
+            with pytest.raises(AuthError, match="cookie is invalid or expired"):
+                _fetch_html("my-cookie")
+
+    @pytest.mark.parametrize("code", [400, 404, 418, 429, 500, 502, 503])
+    def test_network_error_on_other_http_codes(self, code: int) -> None:
+        from unittest.mock import patch
+        from ollama_usage.scraper import _fetch_html
+        from ollama_usage.exceptions import NetworkError
+
+        with patch("urllib.request.urlopen", side_effect=self._http_error(code)):
+            with pytest.raises(NetworkError, match="HTTP error"):
+                _fetch_html("my-cookie")
+
+
+# ---------------------------------------------------------------------------
+# Parsing — entrées tordues mais valides
+# ---------------------------------------------------------------------------
+
+class TestParsingEdgeCases:
+
+    def test_integer_percentage_parsed_as_float(self) -> None:
+        # "50%" (sans décimale) doit donner 50.0
+        data = parse_html(make_html(session_pct=50, weekly_pct=75))
+        assert data["session"]["used_pct"] == 50.0
+        assert isinstance(data["session"]["used_pct"], float)
+
+    def test_uppercase_hex_color_accepted(self) -> None:
+        button = (
+            '<button style="width: 100.0%; background: #ABCDEF"'
+            ' data-model="m:1b" data-requests="3"></button>'
+        )
+        data = parse_html(make_html(session_pct=5.0, session_buttons=button))
+        assert data["session"]["models"][0]["color"] == "#ABCDEF"
+
+    def test_model_name_with_special_chars(self) -> None:
+        button = (
+            '<button style="width: 100.0%; background: #000000"'
+            ' data-model="org/model:7b-instruct-q4_K_M" data-requests="9"></button>'
+        )
+        data = parse_html(make_html(session_pct=5.0, session_buttons=button))
+        assert data["session"]["models"][0]["model"] == "org/model:7b-instruct-q4_K_M"
+
+    def test_zero_request_count(self) -> None:
+        button = (
+            '<button style="width: 100.0%; background: #000000"'
+            ' data-model="m:1b" data-requests="0"></button>'
+        )
+        data = parse_html(make_html(session_pct=5.0, session_buttons=button))
+        assert data["session"]["models"][0]["requests"] == 0
+
+    def test_weekly_only_models_do_not_leak_to_session(self) -> None:
+        button = (
+            '<button style="width: 100.0%; background: #111111"'
+            ' data-model="only-weekly:1b" data-requests="4"></button>'
+        )
+        data = parse_html(make_html(weekly_pct=20.0, weekly_buttons=button))
+        assert data["session"]["models"] == []
+        assert data["weekly"]["models"][0]["model"] == "only-weekly:1b"

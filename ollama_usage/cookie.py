@@ -101,7 +101,11 @@ def _get_default_firefox_profile(base: pathlib.Path) -> pathlib.Path:
         if not ini_candidate.exists():
             continue
         config = configparser.ConfigParser()
-        config.read(str(ini_candidate), encoding="utf-8")
+        try:
+            config.read(str(ini_candidate), encoding="utf-8")
+        except configparser.Error:
+            logger.debug("Malformed profiles.ini at %s — falling back to glob", ini_candidate)
+            continue
 
         defaults: list[pathlib.Path] = []
         others: list[pathlib.Path] = []
@@ -243,7 +247,7 @@ def get_cookie_chrome() -> str | None:
         win="AppData/Local/Google/Chrome/User Data",
         linux=".config/google-chrome",
         mac="Library/Application Support/Google/Chrome",
-        linux_snap="snap/chromium/common/chromium/Default",
+        linux_snap="snap/chromium/common/chromium",
         linux_flatpak=".var/app/com.google.Chrome/config/google-chrome",
     )
     return _chromium_cookie(base, _CHROMIUM_COOKIES_PATH)
