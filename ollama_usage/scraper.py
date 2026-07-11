@@ -137,7 +137,7 @@ def _extract_reset_times(html: str) -> tuple[str, str]:
 
 
 def _parse_fill_models(fill_html: str) -> list[ModelUsage]:
-    """Extrait les ModelUsage depuis le contenu d'un div usage-meter__fill."""
+    """Extrait les ModelUsage depuis un fragment HTML (segments du fill)."""
     entries = re.findall(
         r'style="width:\s*([\d.]+)%;\s*background:\s*(#[0-9a-fA-F]{6})[^"]*"'
         r'[^>]*data-model="([^"]+)"[^>]*data-requests="(\d+)"',
@@ -154,18 +154,7 @@ def _extract_models_per_period(html: str) -> tuple[list[ModelUsage], list[ModelU
     parts = html.split("Weekly usage", 1)
     session_html = parts[0]
     weekly_html = parts[1] if len(parts) > 1 else ""
-
-    def _models_from(fragment: str) -> list[ModelUsage]:
-        entries = re.findall(
-            r'style="width:\s*([\d.]+)%;\s*background:\s*(#[0-9a-fA-F]{6})[^"]*"'
-            r'[^>]*data-model="([^"]+)"[^>]*data-requests="(\d+)"',
-            fragment,
-        )
-        return [
-            ModelUsage(model=model, requests=int(reqs), share_pct=float(share), color=color)
-            for share, color, model, reqs in entries
-        ]
-    return _models_from(session_html), _models_from(weekly_html)
+    return _parse_fill_models(session_html), _parse_fill_models(weekly_html)
 
 
 def parse_html(html: str) -> dict:

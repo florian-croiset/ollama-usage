@@ -166,3 +166,139 @@ class TestIntervalClamping:
 
     def test_default_interval_30_is_unchanged(self) -> None:
         assert self._run_main_interval(30) == 30
+
+
+# ---------------------------------------------------------------------------
+# _sanitize_cookie — entrée None
+# ---------------------------------------------------------------------------
+
+class TestSanitizeCookieNone:
+
+    def test_none_raises_ollama_error(self) -> None:
+        from ollama_usage.exceptions import OllamaUsageError
+        with pytest.raises(OllamaUsageError, match="No Ollama session cookie"):
+            _sanitize_cookie(None)
+
+
+# ---------------------------------------------------------------------------
+# _color_pct — coloration par sévérité
+# ---------------------------------------------------------------------------
+
+class TestColorPct:
+
+    @pytest.mark.parametrize("pct", [0.0, 49.9, 50.0, 80.0, 100.0])
+    def test_percentage_text_always_present(self, pct: float) -> None:
+        from ollama_usage.cli import _color_pct
+        assert f"{pct}%" in _color_pct(pct)
+
+    def test_returns_str(self) -> None:
+        from ollama_usage.cli import _color_pct
+        assert isinstance(_color_pct(42.0), str)
+
+
+# ---------------------------------------------------------------------------
+# _fmt_model_line — formatage / troncature
+# ---------------------------------------------------------------------------
+
+class TestFmtModelLine:
+
+    def test_short_name_present(self) -> None:
+        from ollama_usage.cli import _fmt_model_line
+        line = _fmt_model_line("llama3:8b", 5, 12.3)
+        assert "llama3:8b" in line
+        assert "5 req" in line
+
+    def test_long_name_truncated(self) -> None:
+        from ollama_usage.cli import _fmt_model_line
+        line = _fmt_model_line("a" * 40, 1, 1.0)
+        assert "…" in line
+        assert "a" * 40 not in line
+
+    def test_share_pct_in_line(self) -> None:
+        from ollama_usage.cli import _fmt_model_line
+        line = _fmt_model_line("m:1b", 3, 42.0)
+        assert "42.0" in line
+
+
+# ---------------------------------------------------------------------------
+# Validation des arguments — parser.error → SystemExit
+# ---------------------------------------------------------------------------
+
+class TestArgValidation:
+
+    def _run(self, argv: list[str]) -> None:
+        from ollama_usage.cli import main
+        with patch("sys.argv", ["ollama-usage", *argv]):
+            main()
+
+    @pytest.mark.parametrize("argv", [
+        ["--alert=150"],
+        ["--alert=-1"],
+        ["--opacity=2.0"],
+        ["--opacity=-0.5"],
+        ["--notify-threshold=-5"],
+        ["--notify-threshold=101"],
+    ])
+    def test_out_of_range_args_exit(self, argv: list[str]) -> None:
+        with pytest.raises(SystemExit):
+            self._run(argv)
+
+    def test_invalid_browser_choice_exits(self) -> None:
+        with pytest.raises(SystemExit):
+            self._run(["--browser=netscape"])
+
+    def test_invalid_theme_choice_exits(self) -> None:
+        with pytest.raises(SystemExit):
+            self._run(["--theme=neon"])
+
+
+# ---------------------------------------------------------------------------
+# main() — chemins de sortie
+# ---------------------------------------------------------------------------
+
+class TestMainExitPaths:
+
+    def test_no_cookie_exits_1(self) -> None:
+        from ollama_usage.cli import main
+        from ollama_usage.exceptions import OllamaUsageError
+        with patch("ollama_usage.cli.get_cookie_env", return_value=None), \
+             patch("ollama_usage.cli.get_cookie_auto", side_effect=OllamaUsageError("none")), \
+             patch("sys.argv", ["ollama-usage"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code == 1
+
+    def test_browser_returns_none_exits_1(self) -> None:
+        from ollama_usage.cli import main
+        with patch("ollama_usage.cli.BROWSERS", {"firefox": lambda: None}), \
+             patch("sys.argv", ["ollama-usage", "--browser=firefox"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code == 1
+
+    def test_successful_run_returns_without_systemexit(self, capsys) -> None:
+        from ollama_usage.cli import main
+        data = make_data(10.0, 20.0)
+        with patch("ollama_usage.cli.get_usage", return_value=data), \
+             patch("sys.argv", ["ollama-usage", "--cookie", "abc", "--json"]):
+            main()  # ne doit pas lever
+        out = capsys.readouterr().out
+        assert '"used_pct": 10.0' in out
+
+    def test_alert_triggers_exit_1(self) -> None:
+        from ollama_usage.cli import main
+        data = make_data(90.0, 10.0)
+        with patch("ollama_usage.cli.get_usage", return_value=data), \
+             patch("sys.argv", ["ollama-usage", "--cookie", "abc", "--alert=80", "--quiet"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code == 1
+
+    def test_network_error_in_single_run_exits_1(self) -> None:
+        from ollama_usage.cli import main
+        from ollama_usage.exceptions import NetworkError
+        with patch("ollama_usage.cli.get_usage", side_effect=NetworkError("down")), \
+             patch("sys.argv", ["ollama-usage", "--cookie", "abc"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code == 1

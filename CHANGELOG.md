@@ -18,6 +18,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   arguments (range checks with `parser.error`)
 - Handle locked cookie DB on Windows (PermissionError / WinError 32) 
   by raising a clear BrowserNotFoundError instead of crashing
+- Firefox `profiles.ini` parsing now falls back to glob detection when the
+  file is malformed, instead of raising an uncaught `configparser.Error`
+- Snap Chromium cookie path no longer contains a duplicated `Default`
+  segment, so cookie lookup on Snap Chromium resolves correctly
+- `--widget` no longer requires `cryptography` / `pywin32` when the session
+  cookie is already available (`--cookie`, `OLLAMA_BROWSER_COOKIE`, or Firefox)
+
+### Changed
+- Deduplicated the per-model HTML parsing in the scraper into a single
+  `_parse_fill_models` helper (removed an unused duplicate)
+
+### Added
+- Extensive error-path test suite (264 tests). New `tests/test_cookie.py`
+  covers DB copy/lock cleanup, parameterized SQLite queries, Firefox profile
+  resolution (relative/absolute paths, malformed/absent `profiles.ini`, glob
+  fallback), Chromium key derivation on Windows/macOS/Linux, AES-GCM
+  round-trip decryption, browser auto-detection and the environment variable.
+  New `tests/test_widget.py` covers the pure widget helpers. The scraper and
+  CLI suites gain HTTP 401/403/5xx handling and argument-validation cases.
 
 
 ## [0.1.2] - 2026-05-24

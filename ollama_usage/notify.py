@@ -98,7 +98,8 @@ def check_and_notify(data: dict, threshold: float, state: NotifyState) -> None:
                 ),
             )
 
-        # Critical check first (higher bar, only after warning already set)
+        # Critical check — indépendant du warning ci-dessus : les deux peuvent
+        # se déclencher sur le même tick si l'usage franchit directement le seuil critique.
         if state.should_critical(key, pct, critical_threshold):
             _send(
                 title=f"🔴 Ollama {label} quota critical",
