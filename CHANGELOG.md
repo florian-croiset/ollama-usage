@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+
+## [0.1.3] - 2026-07-11
+
 ### Fixed
 - Model breakdown now correctly parsed after Ollama updated their settings
   page HTML from BEM class names to Tailwind utility classes
