@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from ollama_usage.cli import _sanitize_cookie, _check_alert, display
 
 
-# ---------------------------------------------------------------------------
-# _sanitize_cookie — HTTP Header Injection
-# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _no_api_key_env(monkeypatch) -> None:
+    """A real OLLAMA_API_KEY must not switch main() to the API during tests."""
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+
 
 class TestSanitizeCookie:
 
@@ -18,24 +20,20 @@ class TestSanitizeCookie:
         assert _sanitize_cookie("  abc  ") == "abc"
 
     def test_removes_carriage_return(self) -> None:
-        # \r permet d'injecter des headers HTTP supplémentaires
         assert _sanitize_cookie("abc\rdef") == "abcdef"
 
     def test_removes_newline(self) -> None:
-        # \n permet d'injecter des headers HTTP supplémentaires
         assert _sanitize_cookie("abc\ndef") == "abcdef"
 
     def test_removes_null_byte(self) -> None:
         assert _sanitize_cookie("abc\0def") == "abcdef"
 
     def test_removes_crlf_injection(self) -> None:
-        # Cas classique d'HTTP Header Injection : \r\n
         payload = "legit\r\nX-Injected: evil"
         assert "\r" not in _sanitize_cookie(payload)
         assert "\n" not in _sanitize_cookie(payload)
 
     def test_valid_cookie_unchanged(self) -> None:
-        # Un vrai cookie ne doit pas être altéré
         cookie = "abcdefghijklmnopqrstuvwxyz0123456789_-"
         assert _sanitize_cookie(cookie) == cookie
 
@@ -48,10 +46,6 @@ class TestSanitizeCookie:
     def test_multiple_injections(self) -> None:
         assert _sanitize_cookie("a\r\nb\0c\rd") == "abcd"
 
-
-# ---------------------------------------------------------------------------
-# _check_alert — logique d'alerte quota
-# ---------------------------------------------------------------------------
 
 def make_data(session_pct: float = 0.0, weekly_pct: float = 0.0) -> dict:
     return {
@@ -76,7 +70,6 @@ class TestCheckAlert:
         assert _check_alert(make_data(50.0, 50.0), 80.0, quiet=True) is False
 
     def test_exactly_at_threshold_does_not_trigger(self) -> None:
-        # > threshold, pas >=
         assert _check_alert(make_data(80.0, 80.0), 80.0, quiet=True) is False
 
     def test_one_above_one_below_triggers(self) -> None:
@@ -90,10 +83,6 @@ class TestCheckAlert:
         _check_alert(make_data(90.0), 80.0, quiet=False)
         assert capsys.readouterr().err != ""
 
-
-# ---------------------------------------------------------------------------
-# display — sortie JSON vs texte
-# ---------------------------------------------------------------------------
 
 class TestDisplay:
 
@@ -122,20 +111,14 @@ class TestDisplay:
         assert "77.0" in out
 
 
-# ---------------------------------------------------------------------------
-# Interval clamping
-# ---------------------------------------------------------------------------
-
 class TestIntervalClamping:
-    """Vérifie que l'intervalle est borné entre 10 et 3600 dans main()."""
 
     def _run_main_interval(self, interval_arg: int) -> int:
-        """Lance main() et retourne l'intervalle effectivement utilisé dans _watch_countdown."""
         captured = {}
 
         def fake_countdown(iv):
             captured["interval"] = iv
-            raise KeyboardInterrupt  # stoppe la boucle watch après 1 tour
+            raise KeyboardInterrupt  # exit the watch loop
 
         fake_data = make_data(10.0, 10.0)
 
@@ -168,10 +151,6 @@ class TestIntervalClamping:
         assert self._run_main_interval(30) == 30
 
 
-# ---------------------------------------------------------------------------
-# _sanitize_cookie — entrée None
-# ---------------------------------------------------------------------------
-
 class TestSanitizeCookieNone:
 
     def test_none_raises_ollama_error(self) -> None:
@@ -179,10 +158,6 @@ class TestSanitizeCookieNone:
         with pytest.raises(OllamaUsageError, match="No Ollama session cookie"):
             _sanitize_cookie(None)
 
-
-# ---------------------------------------------------------------------------
-# _color_pct — coloration par sévérité
-# ---------------------------------------------------------------------------
 
 class TestColorPct:
 
@@ -195,10 +170,6 @@ class TestColorPct:
         from ollama_usage.cli import _color_pct
         assert isinstance(_color_pct(42.0), str)
 
-
-# ---------------------------------------------------------------------------
-# _fmt_model_line — formatage / troncature
-# ---------------------------------------------------------------------------
 
 class TestFmtModelLine:
 
@@ -219,10 +190,6 @@ class TestFmtModelLine:
         line = _fmt_model_line("m:1b", 3, 42.0)
         assert "42.0" in line
 
-
-# ---------------------------------------------------------------------------
-# Validation des arguments — parser.error → SystemExit
-# ---------------------------------------------------------------------------
 
 class TestArgValidation:
 
@@ -252,16 +219,13 @@ class TestArgValidation:
             self._run(["--theme=neon"])
 
 
-# ---------------------------------------------------------------------------
-# main() — chemins de sortie
-# ---------------------------------------------------------------------------
-
 class TestMainExitPaths:
 
     def test_no_cookie_exits_1(self) -> None:
         from ollama_usage.cli import main
         from ollama_usage.exceptions import OllamaUsageError
-        with patch("ollama_usage.cli.get_cookie_env", return_value=None), \
+        with patch("ollama_usage.cli.get_api_key_env", return_value=None), \
+             patch("ollama_usage.cli.get_cookie_env", return_value=None), \
              patch("ollama_usage.cli.get_cookie_auto", side_effect=OllamaUsageError("none")), \
              patch("sys.argv", ["ollama-usage"]):
             with pytest.raises(SystemExit) as exc:
@@ -281,7 +245,7 @@ class TestMainExitPaths:
         data = make_data(10.0, 20.0)
         with patch("ollama_usage.cli.get_usage", return_value=data), \
              patch("sys.argv", ["ollama-usage", "--cookie", "abc", "--json"]):
-            main()  # ne doit pas lever
+            main()
         out = capsys.readouterr().out
         assert '"used_pct": 10.0' in out
 
@@ -302,3 +266,130 @@ class TestMainExitPaths:
             with pytest.raises(SystemExit) as exc:
                 main()
         assert exc.value.code == 1
+
+
+def make_monthly_data(monthly_pct: float = 0.0, credits_balance: float | None = 0.0) -> dict:
+    return {
+        "plan": "pro",
+        "session": None,
+        "weekly": None,
+        "monthly": {"used_pct": monthly_pct, "resets_at": "2026-10-01T00:00:00Z", "models": []},
+        "credits_balance": credits_balance,
+    }
+
+
+class TestMonthlyPlan:
+
+    def test_alert_triggers_on_monthly(self) -> None:
+        assert _check_alert(make_monthly_data(91.0), 90.0, quiet=True) is True
+
+    def test_no_alert_when_monthly_below(self) -> None:
+        assert _check_alert(make_monthly_data(10.0), 90.0, quiet=True) is False
+
+    def test_text_output_shows_monthly_only(self, capsys) -> None:
+        display(make_monthly_data(12.5), as_json=False, quiet=False)
+        out = capsys.readouterr().out
+        assert "Monthly" in out and "12.5" in out
+        assert "Session" not in out and "Weekly" not in out
+
+    def test_text_output_shows_credits(self, capsys) -> None:
+        display(make_monthly_data(credits_balance=12.5), as_json=False, quiet=False)
+        assert "$12.50" in capsys.readouterr().out
+
+    def test_text_output_hides_missing_credits(self, capsys) -> None:
+        display(make_monthly_data(credits_balance=None), as_json=False, quiet=False)
+        assert "Credits" not in capsys.readouterr().out
+
+    def test_json_output_has_null_legacy_periods(self, capsys) -> None:
+        import json
+        display(make_monthly_data(5.0), as_json=True, quiet=False)
+        parsed = json.loads(capsys.readouterr().out)
+        assert parsed["session"] is None
+        assert parsed["monthly"]["used_pct"] == 5.0
+
+
+def make_api_data(monthly_pct: float = 1.3) -> dict:
+    return {
+        "plan": None,
+        "session": None,
+        "weekly": None,
+        "monthly": {
+            "used_pct": monthly_pct,
+            "resets_at": None,
+            "models": [{"model": "glm-5.3-flash", "requests": 213, "share_pct": None, "color": None}],
+        },
+        "credits_balance": None,
+        "spend": {"cost_usd": 1.68054, "period": "last_4_weeks", "starting_at": None, "ending_at": None},
+        "source": "api",
+    }
+
+
+class TestApiSource:
+
+    def _run(self, argv: list[str], env_key: str | None = None):
+        from ollama_usage.cli import main
+        with patch("ollama_usage.cli.get_api_key_env", return_value=env_key), \
+             patch("ollama_usage.cli.get_usage_api", return_value=make_api_data()) as api, \
+             patch("ollama_usage.cli.get_usage", return_value=make_data()) as web, \
+             patch("ollama_usage.cli.get_cookie_env", return_value=None), \
+             patch("sys.argv", ["ollama-usage", "--quiet", *argv]):
+            main()
+        return api, web
+
+    def test_api_key_flag_uses_api(self) -> None:
+        api, web = self._run(["--api-key", "sk-flag"])
+        api.assert_called_once_with("sk-flag")
+        web.assert_not_called()
+
+    def test_env_api_key_uses_api(self) -> None:
+        api, web = self._run([], env_key="sk-env")
+        api.assert_called_once_with("sk-env")
+        web.assert_not_called()
+
+    def test_explicit_cookie_beats_env_api_key(self) -> None:
+        api, web = self._run(["--cookie", "abc"], env_key="sk-env")
+        web.assert_called_once_with("abc")
+        api.assert_not_called()
+
+    def test_api_key_flag_beats_cookie_flag(self) -> None:
+        api, web = self._run(["--api-key", "sk-flag", "--cookie", "abc"])
+        api.assert_called_once_with("sk-flag")
+        web.assert_not_called()
+
+    def test_api_key_is_sanitized(self) -> None:
+        api, _ = self._run(["--api-key", " sk-flag\r\n"])
+        api.assert_called_once_with("sk-flag")
+
+
+class TestDisplayApiData:
+
+    def test_no_plan_no_reset_line(self, capsys) -> None:
+        display(make_api_data(1.3), as_json=False, quiet=False)
+        out = capsys.readouterr().out
+        assert "Plan" not in out
+        assert "reset" not in out
+        assert "Monthly" in out and "1.3" in out
+
+    def test_model_line_without_share(self, capsys) -> None:
+        display(make_api_data(), as_json=False, quiet=False)
+        out = capsys.readouterr().out
+        assert "glm-5.3-flash" in out and "213 req" in out
+        assert "None" not in out
+
+    def test_spend_line(self, capsys) -> None:
+        display(make_api_data(), as_json=False, quiet=False)
+        assert "Spend   : $1.68 (last 4 weeks)" in capsys.readouterr().out
+
+
+class TestChromiumBrowserFlag:
+
+    @pytest.mark.parametrize("browser", ["chrome", "edge", "brave", "opera"])
+    def test_chromium_browser_exits_1_with_english_message(self, browser: str, capsys) -> None:
+        from ollama_usage.cli import main
+        with patch("sys.argv", ["ollama-usage", f"--browser={browser}"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "can no longer be read" in err
+        assert "OLLAMA_API_KEY" in err

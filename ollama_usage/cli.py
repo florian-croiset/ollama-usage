@@ -7,6 +7,8 @@ import time
 from typing import Optional
 from importlib.metadata import version as get_version
 
+from ollama_usage.ansi import GREEN, RED, YELLOW, colorize, enable_windows_ansi
+from ollama_usage.api import get_api_key_env, get_usage_api
 from ollama_usage.cookie import (
     get_cookie_auto,
     get_cookie_env,
@@ -18,15 +20,10 @@ from ollama_usage.cookie import (
 )
 from ollama_usage.exceptions import OllamaUsageError, NetworkError
 from ollama_usage.notify import check_and_notify, notify_available, NotifyState
-from ollama_usage.scraper import get_usage
+from ollama_usage.scraper import get_usage, iter_periods
 
 logger = logging.getLogger(__name__)
 
-try:
-    from colorama import Fore, Style, just_fix_windows_console
-    _HAS_COLOR = True
-except ImportError:
-    _HAS_COLOR = False
 
 def _sanitize_cookie(value: str) -> str:
     if value is None:
@@ -49,24 +46,23 @@ BROWSERS = {
 
 def _color_pct(pct: float) -> str:
     """Return the percentage string colored by severity."""
-    text = f"{pct}%"
-    if not _HAS_COLOR:
-        return text
     if pct < 50:
-        color = Fore.GREEN
+        color = GREEN
     elif pct < 80:
-        color = Fore.YELLOW
+        color = YELLOW
     else:
-        color = Fore.RED
-    return color + text + Style.RESET_ALL
+        color = RED
+    return colorize(f"{pct}%", color)
 
 
-def _fmt_model_line(model: str, requests: int, share_pct: float) -> str:
+def _fmt_model_line(model: str, requests: int, share_pct: Optional[float]) -> str:
     """Format one model breakdown line, padded for alignment."""
-    # Truncate long model names
     max_name = 22
     name = model if len(model) <= max_name else model[: max_name - 1] + "…"
-    return f"    {name:<{max_name}}  {requests:>4} req  ({share_pct:5.1f}%)"
+    line = f"    {name:<{max_name}}  {requests:>4} req"
+    if share_pct is None:
+        return line
+    return f"{line}  ({share_pct:5.1f}%)"
 
 
 def display(data: dict, as_json: bool, quiet: bool) -> None:
@@ -76,30 +72,33 @@ def display(data: dict, as_json: bool, quiet: bool) -> None:
         print(json.dumps(data, indent=2))
         return
 
-    print(f"Plan    : {data['plan']}")
+    if data.get("plan"):
+        print(f"Plan    : {data['plan']}")
 
-    for label, period in [("Session", data["session"]), ("Weekly", data["weekly"])]:
-        print(
-            f"{label:<7} : {_color_pct(period['used_pct'])} used"
-            f" — reset at {period['resets_at']}"
-        )
+    for key, period in iter_periods(data):
+        line = f"{key.capitalize():<7} : {_color_pct(period['used_pct'])} used"
+        if period.get("resets_at"):
+            line += f" — reset at {period['resets_at']}"
+        print(line)
         for m in period.get("models", []):
-            print(_fmt_model_line(m["model"], m["requests"], m["share_pct"]))
+            print(_fmt_model_line(m["model"], m["requests"], m.get("share_pct")))
+
+    if data.get("credits_balance") is not None:
+        print(f"Credits : ${data['credits_balance']:.2f}")
+    spend = data.get("spend")
+    if spend:
+        period = (spend.get("period") or "").replace("_", " ")
+        print(f"Spend   : ${spend['cost_usd']:.2f}" + (f" ({period})" if period else ""))
 
 
 def _check_alert(data: dict, threshold: Optional[float], quiet: bool) -> bool:
     """Return True if any quota exceeds the alert threshold."""
     if threshold is None:
         return False
-    session_pct = data["session"]["used_pct"]
-    weekly_pct = data["weekly"]["used_pct"]
-    if session_pct > threshold or weekly_pct > threshold:
+    if any(period["used_pct"] > threshold for _, period in iter_periods(data)):
         if not quiet:
-            msg = f"Warning: usage exceeds {threshold}%"
-            if _HAS_COLOR:
-                print(Fore.RED + "⚠️  " + msg + Style.RESET_ALL, file=sys.stderr)
-            else:
-                print(f"⚠️  {msg}", file=sys.stderr)
+            msg = f"⚠️  Warning: usage exceeds {threshold}%"
+            print(colorize(msg, RED, sys.stderr), file=sys.stderr)
         return True
     return False
 
@@ -126,9 +125,16 @@ def main():
         version=f"ollama-usage {get_version('ollama-usage')}"
     )
     parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument(
+        "--api-key", type=str,
+        help="ollama.com API key — uses the official /api/usage endpoint "
+             "(default: $OLLAMA_API_KEY)"
+    )
     parser.add_argument("--cookie", type=str, help="Manual __Secure-session cookie")
     parser.add_argument(
-        "--browser", type=str, choices=BROWSERS.keys(), help="Force a specific browser"
+        "--browser", type=str, choices=BROWSERS.keys(),
+        help="Read the session cookie from a specific browser "
+             "(only firefox is supported: Chromium-based browsers encrypt their cookies)"
     )
     parser.add_argument("--watch", action="store_true", help="Refresh continuously")
     parser.add_argument(
@@ -137,7 +143,7 @@ def main():
     )
     parser.add_argument(
         "--alert", type=float, metavar="PCT",
-        help="Exit with code 1 if session or weekly usage exceeds PCT%%"
+        help="Exit with code 1 if any usage quota (session, weekly or monthly) exceeds PCT%%"
     )
     parser.add_argument(
         "--quiet", action="store_true",
@@ -184,8 +190,7 @@ def main():
     )
     args = parser.parse_args()
 
-    if _HAS_COLOR:
-        just_fix_windows_console()
+    enable_windows_ansi()  # also needed for --watch screen clearing
 
     if args.interval != 30 and not args.watch:
         print("Warning: --interval has no effect without --watch.", file=sys.stderr)
@@ -205,7 +210,12 @@ def main():
 
         interval = max(10, min(3600, args.interval))
 
-        if args.cookie:
+        # Explicit options first, then OLLAMA_API_KEY, then cookie sources.
+        api_key = None
+        cookie = None
+        if args.api_key:
+            api_key = _sanitize_cookie(args.api_key)
+        elif args.cookie:
             cookie = _sanitize_cookie(args.cookie)
         elif args.browser:
             raw = BROWSERS[args.browser]()
@@ -218,6 +228,8 @@ def main():
                 )
                 raise SystemExit(1)
             cookie = _sanitize_cookie(raw)
+        elif get_api_key_env():
+            api_key = _sanitize_cookie(get_api_key_env())
         else:
             env_cookie = get_cookie_env()
             if env_cookie:
@@ -225,7 +237,13 @@ def main():
             else:
                 cookie = _sanitize_cookie(get_cookie_auto())
 
-        logger.debug("Cookie obtained (***)")
+        if api_key:
+            logger.debug("API key obtained (***) — using %s", "ollama.com/api/usage")
+        else:
+            logger.debug("Cookie obtained (***) — scraping ollama.com/settings")
+
+        def fetch() -> dict:
+            return get_usage_api(api_key) if api_key else get_usage(cookie or "")
 
         alert_triggered = False
 
@@ -242,6 +260,7 @@ def main():
             from ollama_usage.widget import launch_widget
             launch_widget(
                 cookie=cookie,
+                api_key=api_key,
                 interval=interval,
                 theme=args.theme,
                 size=args.size,
@@ -256,7 +275,7 @@ def main():
                     sys.stdout.write("\033[2J\033[H")
                     sys.stdout.flush()
                     try:
-                        data = get_usage(cookie)
+                        data = fetch()
                         display(data, args.json, args.quiet)
                         if args.notify:
                             check_and_notify(data, args.notify_threshold, notify_state)
@@ -268,7 +287,7 @@ def main():
             except KeyboardInterrupt:
                 print("\nStopped.")
         else:
-            data = get_usage(cookie)
+            data = fetch()
             display(data, args.json, args.quiet)
             if args.notify:
                 check_and_notify(data, args.notify_threshold, notify_state)

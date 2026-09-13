@@ -14,14 +14,11 @@ import threading
 import tkinter as tk
 from datetime import datetime, timezone
 
+from ollama_usage.api import get_usage_api
 from ollama_usage.exceptions import NetworkError, OllamaUsageError
-from ollama_usage.scraper import get_usage
+from ollama_usage.scraper import get_usage, iter_periods
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 
 _STATE_FILE = pathlib.Path.home() / ".ollama-usage-widget.json"
 
@@ -65,19 +62,14 @@ POSITIONS = {
     "bottom-right": lambda sw, sh, ww, wh: (sw - ww - 10, sh - wh - 50),
 }
 
-# Widget dimensions
 _W_COMPACT = (240, 72)
-_W_FULL    = (240, 200)   # étendu pour accueillir le breakdown modèles
+_W_FULL    = (240, 200)
 _BAR_W     = 200
 _BAR_H     = 8
 _PAD       = 14
 _FONT      = "Helvetica"
-_MAX_MODELS = 3           # nombre max de modèles affichés par période
+_MAX_MODELS = 3           # per period
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _pct_color(pct: float, theme: dict) -> str:
     if pct < 50:
@@ -98,8 +90,11 @@ def _seconds_until(iso: str) -> int:
 def _fmt_countdown(seconds: int) -> str:
     if seconds <= 0:
         return "now"
-    h, rem = divmod(seconds, 3600)
+    d, rem = divmod(seconds, 86400)
+    h, rem = divmod(rem, 3600)
     m, s   = divmod(rem, 60)
+    if d:
+        return f"{d}d {h:02d}h"
     if h:
         return f"{h}h {m:02d}m"
     if m:
@@ -111,23 +106,21 @@ def _truncate(text: str, max_len: int) -> str:
     return text if len(text) <= max_len else text[: max_len - 1] + "…"
 
 
-# ---------------------------------------------------------------------------
-# Widget
-# ---------------------------------------------------------------------------
-
 class OllamaWidget:
     """Frameless always-on-top Tkinter widget."""
 
     def __init__(
         self,
-        cookie: str,
+        cookie: str | None = None,
         interval: int   = 30,
         theme: str      = "dark",
         size: str       = "full",
         opacity: float  = 0.92,
         position: str | None = None,
+        api_key: str | None = None,
     ) -> None:
         self._cookie      = cookie
+        self._api_key     = api_key
         self._interval    = max(10, interval)
         self._theme       = THEMES.get(theme, THEMES["dark"])
         self._size        = size
@@ -149,8 +142,6 @@ class OllamaWidget:
         self._setup_menu()
         self._restore_position()
         self._fetch_async()
-
-    # ---------------------------------------------------------------- window
 
     def _setup_window(self) -> None:
         r = self._root
@@ -195,8 +186,6 @@ class OllamaWidget:
         m.add_separator()
         m.add_command(label="✕  Close",          command=self._quit)
 
-    # ---------------------------------------------------------------- drag
-
     def _on_drag_start(self, event: tk.Event) -> None:
         self._drag_x = event.x_root - self._root.winfo_x()
         self._drag_y = event.y_root - self._root.winfo_y()
@@ -208,8 +197,6 @@ class OllamaWidget:
 
     def _on_drag_end(self, _: tk.Event) -> None:
         self._save_position()
-
-    # ---------------------------------------------------------------- position
 
     def _restore_position(self) -> None:
         sw = self._root.winfo_screenwidth()
@@ -244,8 +231,6 @@ class OllamaWidget:
         except Exception:
             pass
 
-    # ---------------------------------------------------------------- menu / toggle
-
     def _show_menu(self, event: tk.Event) -> None:
         try:
             if self._root.winfo_exists():
@@ -267,8 +252,6 @@ class OllamaWidget:
         self._root.destroy()
         sys.exit(0)
 
-    # ---------------------------------------------------------------- data
-
     def _fetch_async(self) -> None:
         if self._is_fetching.is_set():
             return
@@ -279,7 +262,10 @@ class OllamaWidget:
 
     def _fetch(self) -> None:
         try:
-            self._data  = get_usage(self._cookie)
+            if self._api_key:
+                self._data = get_usage_api(self._api_key)
+            else:
+                self._data = get_usage(self._cookie or "")
             self._error = None
         except NetworkError:
             self._error = "Network error"
@@ -295,8 +281,6 @@ class OllamaWidget:
                     )
                 except Exception:
                     pass
-
-    # ---------------------------------------------------------------- drawing
 
     def _draw(self) -> None:
         self._canvas.delete("all")
@@ -324,12 +308,10 @@ class OllamaWidget:
             return
 
         y = p + 20
-        for label, pct in [
-            ("Session", self._data["session"]["used_pct"]),
-            ("Weekly",  self._data["weekly"]["used_pct"]),
-        ]:
+        for key, period in iter_periods(self._data):
+            pct   = period["used_pct"]
             color = _pct_color(pct, t)
-            c.create_text(p,     y, text=f"{label}:", anchor="nw",
+            c.create_text(p,     y, text=f"{key.capitalize()}:", anchor="nw",
                           fill=t["sub"], font=(_FONT, 9))
             c.create_text(w - p, y, text=f"{pct:.1f}%", anchor="ne",
                           fill=color, font=(_FONT, 9, "bold"))
@@ -343,9 +325,9 @@ class OllamaWidget:
         bh     = _BAR_H
         bar_x  = (w - bw) // 2
 
-        # Header
-        plan = self._data["plan"].capitalize() if self._data else "—"
-        c.create_text(p, p, text=f"ollama · {plan}", anchor="nw",
+        plan = (self._data or {}).get("plan")
+        header = f"ollama · {plan.capitalize()}" if plan else "ollama"
+        c.create_text(p, p, text=header, anchor="nw",
                       fill=t["sub"], font=(_FONT, 8))
         dot = t["green"] if self._data and not self._error else t["red"]
         c.create_text(w - p, p, text="●", anchor="ne",
@@ -359,29 +341,25 @@ class OllamaWidget:
             return
 
         y = p + 22
-        for label, pct, iso, models in [
-            ("Session", self._data["session"]["used_pct"],
-             self._data["session"]["resets_at"],
-             self._data["session"].get("models", [])),
-            ("Weekly",  self._data["weekly"]["used_pct"],
-             self._data["weekly"]["resets_at"],
-             self._data["weekly"].get("models", [])),
-        ]:
+        for key, period in iter_periods(self._data):
+            label  = key.capitalize()
+            pct    = period["used_pct"]
+            iso    = period["resets_at"]
+            models = period.get("models", [])
             color = _pct_color(pct, t)
-            secs  = _seconds_until(iso)
 
-            # --- Label + pourcentage ---
             c.create_text(bar_x,      y, text=label,         anchor="nw",
                           fill=t["fg"], font=(_FONT, 9, "bold"))
             c.create_text(bar_x + bw, y, text=f"{pct:.1f}%", anchor="ne",
                           fill=color, font=(_FONT, 9, "bold"))
             y += 14
 
-            # --- Barre segmentée par modèle ---
             c.create_rectangle(bar_x, y, bar_x + bw, y + bh,
                                 fill=t["bar_bg"], outline="", width=0)
             total_fill_w = int(bw * min(pct, 100.0) / 100.0)
-            if models and total_fill_w > 0:
+            # share_pct is only available from the settings page
+            has_shares = all(m.get("share_pct") is not None for m in models)
+            if models and has_shares and total_fill_w > 0:
                 x_cursor = bar_x
                 for m in models[:_MAX_MODELS]:
                     seg_w = int(total_fill_w * m["share_pct"] / 100.0)
@@ -392,58 +370,60 @@ class OllamaWidget:
                         )
                         x_cursor += seg_w
             elif total_fill_w > 0:
-                # Fallback monochrome si pas de breakdown
                 c.create_rectangle(bar_x, y, bar_x + total_fill_w, y + bh,
                                    fill=color, outline="", width=0)
             y += bh + 5
 
-            # --- Légende modèles (max _MAX_MODELS lignes) ---
             for m in models[:_MAX_MODELS]:
                 dot_x = bar_x + 2
-                # Carré coloré
                 c.create_rectangle(dot_x, y + 1, dot_x + 7, y + 9,
-                                   fill=m["color"], outline="", width=0)
-                # Nom tronqué
+                                   fill=m.get("color") or t["sub"], outline="", width=0)
                 name = _truncate(m["model"], 15)
                 c.create_text(dot_x + 10, y, text=name, anchor="nw",
                               fill=t["sub"], font=(_FONT, 8))
-                # Nb requêtes aligné à droite
                 c.create_text(bar_x + bw, y, text=f"{m['requests']}req",
                               anchor="ne", fill=t["sub"], font=(_FONT, 8))
                 y += 11
 
-            # --- Countdown ---
-            c.create_text(bar_x, y,
-                          text=f"resets in {_fmt_countdown(secs)}",
-                          anchor="nw", fill=t["sub"], font=(_FONT, 8))
-            y += 20
+            if iso:
+                c.create_text(bar_x, y,
+                              text=f"resets in {_fmt_countdown(_seconds_until(iso))}",
+                              anchor="nw", fill=t["sub"], font=(_FONT, 8))
+                y += 20
+            else:
+                y += 8
 
-    # ---------------------------------------------------------------- run
+        extras = []
+        if self._data.get("credits_balance") is not None:
+            extras.append(f"credits ${self._data['credits_balance']:.2f}")
+        if self._data.get("spend"):
+            extras.append(f"spend ${self._data['spend']['cost_usd']:.2f} (4w)")
+        if extras and y + 12 <= h:
+            c.create_text(bar_x, y, text="  ·  ".join(extras),
+                          anchor="nw", fill=t["sub"], font=(_FONT, 8))
 
     def run(self) -> None:
         self._root.mainloop()
 
 
-# ---------------------------------------------------------------------------
-# Public entry point
-# ---------------------------------------------------------------------------
-
 def launch_widget(
-    cookie: str,
+    cookie: str | None   = None,
     interval: int        = 30,
     theme: str           = "dark",
     size: str            = "full",
     opacity: float       = 0.92,
     position: str | None = None,
+    api_key: str | None  = None,
 ) -> None:
     """
     Launch the always-on-top Ollama quota widget.
 
     Args:
-        cookie:   __Secure-session cookie value.
+        cookie:   __Secure-session cookie value (scrapes ollama.com/settings).
+        api_key:  ollama.com API key (official /api/usage) — takes precedence over cookie.
         interval: Refresh interval in seconds (min 10).
         theme:    "dark" | "light" | "minimal".
-        size:     "full" (bars + modèles + countdown) | "compact" (text only).
+        size:     "full" (bars + models + countdown) | "compact" (text only).
         opacity:  Window opacity between 0.1 and 1.0.
         position: "top-left" | "top-right" | "bottom-left" | "bottom-right"
                   or None to restore last saved position.
@@ -463,4 +443,5 @@ def launch_widget(
         size=size,
         opacity=opacity,
         position=position,
+        api_key=api_key,
     ).run()

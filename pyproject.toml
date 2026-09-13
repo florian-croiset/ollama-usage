@@ -26,11 +26,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Utilities",
 ]
-dependencies = [
-    "colorama",
-    "cryptography",
-    "pywin32; sys_platform == 'win32'",
-]
+dependencies = []
 
 [project.optional-dependencies]
 notify = ["plyer"]
