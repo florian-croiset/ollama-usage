@@ -6,6 +6,7 @@ Requires tkinter (stdlib). On minimal Linux installs:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import pathlib
@@ -83,7 +84,7 @@ def _seconds_until(iso: str) -> int:
     try:
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
         return max(0, int((dt - datetime.now(timezone.utc)).total_seconds()))
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return 0
 
 
@@ -214,10 +215,10 @@ class OllamaWidget:
                 saved_x = state.get("x", default_x)
                 saved_y = state.get("y", default_y)
                 if not isinstance(saved_x, int) or not isinstance(saved_y, int):
-                    raise ValueError("State file contains non-integer coordinates")
+                    raise TypeError("State file contains non-integer coordinates")
                 if 0 <= saved_x <= sw - 20 and 0 <= saved_y <= sh - 20:
                     x, y = saved_x, saved_y
-            except Exception as e:
+            except (OSError, ValueError, TypeError, AttributeError) as e:
                 logger.debug("Could not restore widget position: %s", e)
 
         self._root.geometry(f"+{x}+{y}")
@@ -228,8 +229,8 @@ class OllamaWidget:
                 json.dumps({"x": self._root.winfo_x(), "y": self._root.winfo_y()}),
                 encoding="utf-8"
             )
-        except Exception:
-            pass
+        except (OSError, tk.TclError) as e:
+            logger.debug("Could not save widget position: %s", e)
 
     def _show_menu(self, event: tk.Event) -> None:
         try:
@@ -245,10 +246,8 @@ class OllamaWidget:
 
     def _quit(self) -> None:
         self._is_running = False
-        try:
+        with contextlib.suppress(OSError, tk.TclError):
             self._save_position()
-        except Exception:
-            pass
         self._root.destroy()
         sys.exit(0)
 
@@ -274,13 +273,11 @@ class OllamaWidget:
         finally:
             self._is_fetching.clear()
             if self._is_running:
-                try:
+                with contextlib.suppress(RuntimeError, tk.TclError):
                     self._root.after(0, self._draw)
                     self._after_id = self._root.after(
                         self._interval * 1000, self._fetch_async
                     )
-                except Exception:
-                    pass
 
     def _draw(self) -> None:
         self._canvas.delete("all")

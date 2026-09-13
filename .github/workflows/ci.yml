@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install lint tools
-        run: pip install ruff bandit
+        run: pip install ruff==0.16.7 bandit==1.9.4
       - name: Ruff
         run: ruff check ollama_usage/
       - name: Bandit
