@@ -10,7 +10,8 @@ import platform
 import shutil
 import sqlite3
 import tempfile
-from typing import Callable, Generator
+from collections.abc import Generator
+from typing import Callable
 
 from ollama_usage.exceptions import (
     BrowserNotFoundError,
@@ -30,22 +31,21 @@ def _copy_db(path: pathlib.Path) -> Generator[str, None, None]:
     """Copy a locked SQLite DB to a temp file, yield the path, then delete it."""
     if not path.exists():
         raise BrowserNotFoundError(f"Cookie database not found: {path}")
-    tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
+    with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp:
+        tmp_path = tmp.name
     try:
-        shutil.copy2(str(path), tmp.name)
+        shutil.copy2(str(path), tmp_path)
     except PermissionError as exc:
-        tmp.close()
-        pathlib.Path(tmp.name).unlink(missing_ok=True)
+        pathlib.Path(tmp_path).unlink(missing_ok=True)
         raise BrowserNotFoundError(
             f"Cannot read cookie database (file locked by another process): {path}\n"
             "Close the browser and try again, or pass your cookie manually with --cookie."
         ) from exc
-    tmp.close()
     try:
-        yield tmp.name
+        yield tmp_path
     finally:
-        pathlib.Path(tmp.name).unlink(missing_ok=True)
-        logger.debug("Temp DB deleted: %s", tmp.name)
+        pathlib.Path(tmp_path).unlink(missing_ok=True)
+        logger.debug("Temp DB deleted: %s", tmp_path)
 
 
 def _query_cookie(db_path: str, query: str, params: tuple) -> bytes | None:

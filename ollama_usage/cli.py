@@ -1,25 +1,26 @@
+from __future__ import annotations
+
 import argparse
 import itertools
 import json
 import logging
 import sys
 import time
-from typing import Optional
 from importlib.metadata import version as get_version
 
 from ollama_usage.ansi import GREEN, RED, YELLOW, colorize, enable_windows_ansi
 from ollama_usage.api import get_api_key_env, get_usage_api
 from ollama_usage.cookie import (
     get_cookie_auto,
-    get_cookie_env,
-    get_cookie_firefox,
+    get_cookie_brave,
     get_cookie_chrome,
     get_cookie_edge,
-    get_cookie_brave,
+    get_cookie_env,
+    get_cookie_firefox,
     get_cookie_opera,
 )
-from ollama_usage.exceptions import OllamaUsageError, NetworkError
-from ollama_usage.notify import check_and_notify, notify_available, NotifyState
+from ollama_usage.exceptions import NetworkError, OllamaUsageError
+from ollama_usage.notify import NotifyState, check_and_notify, notify_available
 from ollama_usage.scraper import get_usage, iter_periods
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ def _color_pct(pct: float) -> str:
     return colorize(f"{pct}%", color)
 
 
-def _fmt_model_line(model: str, requests: int, share_pct: Optional[float]) -> str:
+def _fmt_model_line(model: str, requests: int, share_pct: float | None) -> str:
     """Format one model breakdown line, padded for alignment."""
     max_name = 22
     name = model if len(model) <= max_name else model[: max_name - 1] + "…"
@@ -91,7 +92,7 @@ def display(data: dict, as_json: bool, quiet: bool) -> None:
         print(f"Spend   : ${spend['cost_usd']:.2f}" + (f" ({period})" if period else ""))
 
 
-def _check_alert(data: dict, threshold: Optional[float], quiet: bool) -> bool:
+def _check_alert(data: dict, threshold: float | None, quiet: bool) -> bool:
     """Return True if any quota exceeds the alert threshold."""
     if threshold is None:
         return False
