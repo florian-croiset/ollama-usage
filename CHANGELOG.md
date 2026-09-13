@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+
+## [0.2.0] - 2026-09-13
+
 ### Fixed
 - Parsing no longer fails on the new `ollama.com/settings` page introduced
   with credit-based pricing (Aug 31, 2026): the Session / Weekly meters were
@@ -27,6 +30,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `credits_balance`: current "Usage credits" balance in USD (`null` if absent)
 - `iter_periods()` helper to iterate over the quotas present in a usage dict
 - Widget countdown shows days for long reset periods (e.g. `29d 00h`)
+- Project website (`docs/`, GitHub Pages)
 
 ### Removed
 - **Breaking:** cookie reading from Chromium-based browsers (Chrome, Edge,
