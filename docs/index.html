@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ollama-usage: check your Ollama Cloud quota</title>
+<meta name="description" content="Check your Ollama Cloud usage quota from the terminal, from Python, or in a small desktop widget.">
+<link rel="canonical" href="https://florian-croiset.github.io/ollama-usage/">
+<meta property="og:title" content="ollama-usage">
+<meta property="og:description" content="Check your Ollama Cloud usage quota from the terminal, from Python, or in a small desktop widget.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://florian-croiset.github.io/ollama-usage/">
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #666666;
+    --line: #e5e5e5;
+    --code-bg: #f5f5f5;
+    --link: #0b57d0;
+    --green: #1a7f37;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111111;
+      --fg: #e8e8e8;
+      --muted: #999999;
+      --line: #2a2a2a;
+      --code-bg: #1b1b1b;
+      --link: #8ab4f8;
+      --green: #56d364;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    padding: 48px 20px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 1.75rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 40px 0 12px; }
+  p { margin: 0 0 12px; }
+  a { color: var(--link); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  .lead { color: var(--muted); }
+  nav { margin-top: 16px; }
+  nav a { margin-right: 16px; }
+  code, pre { font: 14px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  code { background: var(--code-bg); padding: 1px 4px; border-radius: 3px; }
+  p code, dd code { overflow-wrap: anywhere; }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 0 0 12px;
+    overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; }
+  .copy {
+    display: flex;
+    align-items: flex-start;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    margin: 0 0 12px;
+  }
+  .copy pre, pre.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .copy pre { flex: 1; min-width: 0; margin: 0; border: 0; }
+  .copy button {
+    flex: none;
+    margin: 10px 8px 0 0;
+    font: 13px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 6px 10px;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .copy button:hover { border-color: var(--muted); }
+  .prompt, .comment { color: var(--muted); user-select: none; }
+  .ok { color: var(--green); }
+  dl { margin: 0; }
+  dt { font-weight: 600; margin-top: 14px; }
+  dd { margin: 2px 0 0; color: var(--muted); }
+  footer {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 14px;
+  }
+  footer p:last-child { margin: 0; }
+  @media (max-width: 480px) {
+    body { padding: 32px 16px; }
+    h1 { font-size: 1.5rem; }
+    code, pre { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>ollama-usage</h1>
+    <p class="lead">Check your Ollama Cloud usage quota from the terminal, from Python, or in a small desktop widget.</p>
+    <nav>
+      <a href="https://github.com/florian-croiset/ollama-usage">GitHub</a>
+      <a href="https://github.com/florian-croiset/ollama-usage/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/florian-croiset/ollama-usage/issues">Issues</a>
+    </nav>
+  </header>
+
+  <section>
+    <h2>Install</h2>
+    <div class="copy">
+      <pre><code><span class="prompt">$ </span><span id="install">pip install git+https://github.com/florian-croiset/ollama-usage</span></code></pre>
+      <button type="button" data-copy="install">Copy</button>
+    </div>
+    <p>Create an API key at <a href="https://ollama.com/settings/keys">ollama.com/settings/keys</a>, then:</p>
+    <pre class="wrap"><code><span class="prompt">$ </span>export OLLAMA_API_KEY=your_key
+<span class="comment"># PowerShell: $env:OLLAMA_API_KEY = "your_key"</span>
+<span class="prompt">$ </span>ollama-usage</code></pre>
+    <p>No API key? Log in to ollama.com with Firefox and the session cookie is read automatically. With another browser, copy the <code>__Secure-session</code> cookie and pass it with <code>--cookie</code> or <code>OLLAMA_BROWSER_COOKIE</code> (Chromium-based browsers are not read automatically).</p>
+    <p>Desktop notifications need an extra:</p>
+    <pre class="wrap"><code><span class="prompt">$ </span>pip install "ollama-usage[notify] @ git+https://github.com/florian-croiset/ollama-usage"</code></pre>
+  </section>
+
+  <section>
+    <h2>Example output</h2>
+    <pre><code><span class="prompt">$ </span>ollama-usage
+Monthly : <span class="ok">18.4%</span> used
+    deepseek-v3.1:671b       112 req
+    gpt-oss:120b              64 req
+    web search                21 req
+Spend   : $1.20 (last 4 weeks)</code></pre>
+    <p>With the session cookie instead of an API key, you also get the plan, reset date, share per model and credits balance.</p>
+  </section>
+
+  <section>
+    <h2>Features</h2>
+    <dl>
+      <dt>Every plan</dt>
+      <dd>Free, Pro, Max and Team monthly credits, and legacy session / weekly limits.</dd>
+      <dt>Scripting</dt>
+      <dd><code>--json</code>, <code>--watch --interval 60</code>, and <code>--quiet --alert 80</code> (exit code 1 above 80%).</dd>
+      <dt>Notifications</dt>
+      <dd><code>--notify</code> (needs the <code>notify</code> extra) warns once when a quota crosses <code>--notify-threshold</code>.</dd>
+      <dt>Widget</dt>
+      <dd><code>--widget</code> opens an always-on-top window with usage and reset countdown (needs tkinter).</dd>
+      <dt>Python library</dt>
+      <dd><code>get_usage_api(key)</code> and <code>get_usage(cookie)</code> return a plain dict.</dd>
+      <dt>Minimal requirements</dt>
+      <dd>Python 3.9+, no required dependencies. Windows, macOS and Linux.</dd>
+    </dl>
+  </section>
+
+  <footer>
+    <p>Full documentation in the <a href="https://github.com/florian-croiset/ollama-usage#readme">README</a>. Uses an undocumented Ollama endpoint and scrapes ollama.com/settings; either may change.</p>
+    <p><a href="https://github.com/florian-croiset/ollama-usage/blob/main/LICENSE">MIT License</a>. Not affiliated with Ollama.</p>
+  </footer>
+</main>
+<script>
+  document.querySelectorAll("[data-copy]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var text = document.getElementById(button.dataset.copy).textContent;
+      var done = function () {
+        button.textContent = "Copied";
+        setTimeout(function () { button.textContent = "Copy"; }, 1500);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done);
+      } else {
+        var area = document.createElement("textarea");
+        area.value = text;
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+        done();
+      }
+    });
+  });
+</script>
+</body>
+</html>
