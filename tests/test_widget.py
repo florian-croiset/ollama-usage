@@ -1,10 +1,4 @@
-"""Tests for ollama_usage.widget (pure helpers, no display required).
-
-Le module est importé via importorskip : si tkinter n'est pas compilé dans
-l'interpréteur, les tests sont sautés proprement au lieu d'échouer à la
-collecte. Aucun `Tk()` n'est instancié — on ne teste que les fonctions pures
-et les constantes, donc pas besoin de serveur X / DISPLAY.
-"""
+"""Tests for ollama_usage.widget pure helpers (no Tk instance, no display needed)."""
 
 from __future__ import annotations
 
@@ -25,10 +19,6 @@ from ollama_usage.widget import (
 _THEME = {"green": "G", "yellow": "Y", "red": "R"}
 
 
-# ---------------------------------------------------------------------------
-# _pct_color
-# ---------------------------------------------------------------------------
-
 class TestPctColor:
 
     @pytest.mark.parametrize("pct,expected", [
@@ -47,10 +37,6 @@ class TestPctColor:
         assert _pct_color(pct, _THEME) == expected
 
 
-# ---------------------------------------------------------------------------
-# _seconds_until
-# ---------------------------------------------------------------------------
-
 class TestSecondsUntil:
 
     def test_far_future_is_positive(self) -> None:
@@ -60,7 +46,7 @@ class TestSecondsUntil:
         assert _seconds_until("2000-01-01T00:00:00Z") == 0
 
     def test_handles_z_suffix(self) -> None:
-        # ne doit pas lever malgré le 'Z' (non géré par fromisoformat avant 3.11)
+        # must not raise despite the 'Z' (unsupported by fromisoformat before 3.11)
         assert _seconds_until("2999-12-31T23:59:59Z") > 0
 
     def test_invalid_string_is_zero(self) -> None:
@@ -70,16 +56,12 @@ class TestSecondsUntil:
         assert _seconds_until("") == 0
 
     def test_naive_datetime_is_zero(self) -> None:
-        # sans timezone, la soustraction avec un now() aware lève → 0
+        # without a timezone, subtracting from an aware now() raises → 0
         assert _seconds_until("2999-01-01T00:00:00") == 0
 
     def test_garbage_is_zero(self) -> None:
         assert _seconds_until("2026-13-45T99:99:99Z") == 0
 
-
-# ---------------------------------------------------------------------------
-# _fmt_countdown
-# ---------------------------------------------------------------------------
 
 class TestFmtCountdown:
 
@@ -96,14 +78,13 @@ class TestFmtCountdown:
         (3600, "1h 00m"),
         (3661, "1h 01m"),
         (7325, "2h 02m"),
+        (86399, "23h 59m"),
+        (86400, "1d 00h"),
+        (2505600, "29d 00h"),
     ])
     def test_formatting(self, seconds: int, expected: str) -> None:
         assert _fmt_countdown(seconds) == expected
 
-
-# ---------------------------------------------------------------------------
-# _truncate
-# ---------------------------------------------------------------------------
 
 class TestTruncate:
 
@@ -124,10 +105,6 @@ class TestTruncate:
     def test_empty_string(self) -> None:
         assert _truncate("", 5) == ""
 
-
-# ---------------------------------------------------------------------------
-# THEMES / POSITIONS — constantes
-# ---------------------------------------------------------------------------
 
 class TestThemesAndPositions:
 
@@ -162,12 +139,8 @@ class TestThemesAndPositions:
         assert y == 10
 
 
-# ---------------------------------------------------------------------------
-# Régression : check_dependencies supprimée
-# ---------------------------------------------------------------------------
-
 class TestRegressions:
 
     def test_check_dependencies_removed(self) -> None:
-        """--widget ne doit plus exiger cryptography quand le cookie est fourni."""
+        """--widget must not require cryptography when the cookie is provided."""
         assert not hasattr(widget, "check_dependencies")

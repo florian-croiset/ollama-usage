@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import configparser
 import contextlib
-import json
 import logging
 import pathlib
 import platform
 import shutil
 import sqlite3
 import tempfile
-from base64 import b64decode
 from typing import Callable, Generator
 
 from ollama_usage.exceptions import (
@@ -26,8 +24,6 @@ _SYSTEM = platform.system()
 _COOKIE_NAME = "__Secure-session"
 _COOKIE_HOST = "ollama.com"
 
-
-# --- SQLite helpers ---
 
 @contextlib.contextmanager
 def _copy_db(path: pathlib.Path) -> Generator[str, None, None]:
@@ -64,16 +60,13 @@ def _query_cookie(db_path: str, query: str, params: tuple) -> bytes | None:
         conn.close()
 
 
-# --- Firefox ---
-
 def _firefox_profiles_dir() -> pathlib.Path:
-    """Retourne le répertoire des profils Firefox, en tenant compte de Snap/Flatpak sur Linux."""
+    """Return the Firefox profiles directory, taking Snap/Flatpak into account on Linux."""
     if _SYSTEM == "Windows":
         return pathlib.Path.home() / "AppData/Roaming/Mozilla/Firefox/Profiles"
     if _SYSTEM == "Darwin":
         return pathlib.Path.home() / "Library/Application Support/Firefox/Profiles"
     if _SYSTEM == "Linux":
-        # Ordre de priorité : installation classique, puis Snap, puis Flatpak
         candidates = [
             pathlib.Path.home() / ".mozilla/firefox",
             pathlib.Path.home() / "snap/firefox/common/.mozilla/firefox",
@@ -83,7 +76,7 @@ def _firefox_profiles_dir() -> pathlib.Path:
             if path.exists():
                 logger.debug("Firefox profiles dir: %s", path)
                 return path
-        # Aucun trouvé — retourner le chemin standard pour que l'erreur soit explicite
+        # Standard path, so the resulting error message is meaningful
         return candidates[0]
     raise UnsupportedOSError(f"Firefox not supported on {_SYSTEM}")
 
@@ -158,139 +151,34 @@ def get_cookie_firefox() -> str | None:
     return value if isinstance(value, str) else None
 
 
-# --- Chromium-based browsers ---
-
-def _chromium_key(local_state: pathlib.Path) -> bytes:
-    """Decrypt the AES key from Chrome's Local State file."""
-    if not local_state.exists():
-        raise BrowserNotFoundError(f"Local State not found: {local_state}")
-    with open(local_state, encoding="utf-8") as f:
-        data = json.load(f)
-    encrypted_key = b64decode(data["os_crypt"]["encrypted_key"])[5:]
-
-    if _SYSTEM == "Windows":
-        import win32crypt
-        return win32crypt.CryptUnprotectData(encrypted_key, None, None, None, 0)[1]
-    elif _SYSTEM == "Darwin":
-        import hashlib
-        import subprocess
-        result = subprocess.run(
-            ["security", "find-generic-password", "-a", "Chrome",
-             "-s", "Chrome Safe Storage", "-w"],
-            capture_output=True, text=True,
-        )
-        if result.returncode != 0 or not result.stdout.strip():
-            raise BrowserNotFoundError(
-                f"Could not retrieve Chrome Safe Storage key from Keychain "
-                f"(exit {result.returncode}): {result.stderr.strip()}"
-            )
-        password = result.stdout.strip().encode()
-        return hashlib.pbkdf2_hmac("sha1", password, b"saltysalt", 1003, 16)
-    else:
-        import hashlib
-        return hashlib.pbkdf2_hmac("sha1", b"peanuts", b"saltysalt", 1, 16)
+_CHROMIUM_UNSUPPORTED_MSG = (
+    "{name} cookies can no longer be read: Chromium-based browsers encrypt them "
+    "(App-Bound Encryption on Windows, OS keyring on macOS/Linux).\n"
+    "Use an ollama.com API key instead (--api-key or OLLAMA_API_KEY, recommended), "
+    "log in with Firefox, or pass the cookie manually with --cookie."
+)
 
 
-def _decrypt_chromium_value(encrypted: bytes, key: bytes) -> str:
-    """Decrypt a Chromium AES-GCM encrypted cookie value."""
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    nonce, ciphertext = encrypted[3:15], encrypted[15:]
-    return AESGCM(key).decrypt(nonce, ciphertext, None).decode()
+def _chromium_unsupported(name: str) -> Callable[[], str | None]:
+    def get_cookie() -> str | None:
+        raise BrowserNotFoundError(_CHROMIUM_UNSUPPORTED_MSG.format(name=name))
+
+    get_cookie.__name__ = f"get_cookie_{name.lower()}"
+    get_cookie.__doc__ = f"Unsupported: {name} cookies are encrypted — always raises BrowserNotFoundError."
+    return get_cookie
 
 
-def _read_chromium_cookie(db_path: pathlib.Path, key: bytes) -> str | None:
-    """Read and decrypt __Secure-session from a Chromium cookies DB."""
-    with _copy_db(db_path) as tmp:
-        encrypted = _query_cookie(
-            tmp,
-            "SELECT encrypted_value FROM cookies WHERE host_key=? AND name=?",
-            (_COOKIE_HOST, _COOKIE_NAME),
-        )
-    if not encrypted:
-        return None
-    return _decrypt_chromium_value(encrypted, key)
+# Kept for backward compatibility.
+get_cookie_chrome = _chromium_unsupported("Chrome")
+get_cookie_edge = _chromium_unsupported("Edge")
+get_cookie_brave = _chromium_unsupported("Brave")
+get_cookie_opera = _chromium_unsupported("Opera")
 
-
-def _chromium_cookie(base: pathlib.Path, cookies_rel: pathlib.Path) -> str | None:
-    """Generic helper for all Chromium-based browsers."""
-    key = _chromium_key(base / "Local State")
-    return _read_chromium_cookie(base / cookies_rel, key)
-
-
-# --- Per-browser public API ---
-
-def _chromium_base(win: str, linux: str, mac: str, linux_snap: str | None = None, linux_flatpak: str | None = None) -> pathlib.Path:
-    if _SYSTEM == "Windows":
-        return pathlib.Path.home() / win
-    if _SYSTEM == "Darwin":
-        return pathlib.Path.home() / mac
-    if _SYSTEM == "Linux":
-        # Ordre de priorité : installation classique, puis Snap, puis Flatpak
-        candidates = [pathlib.Path.home() / linux]
-        if linux_snap:
-            candidates.append(pathlib.Path.home() / linux_snap)
-        if linux_flatpak:
-            candidates.append(pathlib.Path.home() / linux_flatpak)
-        for path in candidates:
-            if path.exists():
-                logger.debug("Chromium base dir: %s", path)
-                return path
-        return candidates[0]  # laisse l'erreur se produire normalement
-    raise UnsupportedOSError(f"Unsupported OS: {_SYSTEM}")
-
-
-_CHROMIUM_COOKIES_PATH = pathlib.Path("Default/Network/Cookies")
-
-
-def get_cookie_chrome() -> str | None:
-    base = _chromium_base(
-        win="AppData/Local/Google/Chrome/User Data",
-        linux=".config/google-chrome",
-        mac="Library/Application Support/Google/Chrome",
-        linux_snap="snap/chromium/common/chromium",
-        linux_flatpak=".var/app/com.google.Chrome/config/google-chrome",
-    )
-    return _chromium_cookie(base, _CHROMIUM_COOKIES_PATH)
-
-
-def get_cookie_edge() -> str | None:
-    base = _chromium_base(
-        win="AppData/Local/Microsoft/Edge/User Data",
-        linux=".config/microsoft-edge",
-        mac="Library/Application Support/Microsoft Edge",
-        linux_flatpak=".var/app/com.microsoft.Edge/config/microsoft-edge",
-    )
-    return _chromium_cookie(base, _CHROMIUM_COOKIES_PATH)
-
-
-def get_cookie_brave() -> str | None:
-    base = _chromium_base(
-        win="AppData/Local/BraveSoftware/Brave-Browser/User Data",
-        linux=".config/BraveSoftware/Brave-Browser",
-        mac="Library/Application Support/BraveSoftware/Brave-Browser",
-        linux_flatpak=".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser",
-    )
-    return _chromium_cookie(base, _CHROMIUM_COOKIES_PATH)
-
-
-def get_cookie_opera() -> str | None:
-    base = _chromium_base(
-        win="AppData/Roaming/Opera Software/Opera Stable",
-        linux=".config/opera",
-        mac="Library/Application Support/com.operasoftware.Opera",
-    )
-    return _chromium_cookie(base, pathlib.Path("Cookies"))
-
-
-# --- Auto-detection ---
 
 _BROWSERS: list[Callable[[], str | None]] = [
-    get_cookie_chrome,
     get_cookie_firefox,
-    get_cookie_edge,
-    get_cookie_brave,
-    get_cookie_opera,
 ]
+
 
 def get_cookie_auto() -> str:
     """Try each browser in order and return the first valid cookie found."""
@@ -305,12 +193,10 @@ def get_cookie_auto() -> str:
             logger.debug("%s failed: %s", browser.__name__, e)
             continue
     raise OllamaUsageError(
-        "No Ollama session cookie found in any supported browser. "
-        "Pass it manually with --cookie."
+        "No Ollama session cookie found in Firefox.\n"
+        "Use an ollama.com API key (--api-key or OLLAMA_API_KEY, recommended), "
+        "or pass the cookie manually with --cookie."
     )
-
-
-# --- Environment Variable ---
 
 
 def get_cookie_env() -> str | None:

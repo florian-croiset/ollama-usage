@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 
+from ollama_usage.scraper import PERIOD_KEYS, iter_periods
+
 logger = logging.getLogger(__name__)
 
-_CRITICAL_OFFSET = 15  # trigger a second "critical" notif this many % above threshold
+_CRITICAL_OFFSET = 15  # % above the warning threshold
 
 try:
     from plyer import notification as _plyer_notification
@@ -24,8 +26,8 @@ class NotifyState:
     """
 
     def __init__(self) -> None:
-        self._warned: dict[str, bool] = {"session": False, "weekly": False}
-        self._critical: dict[str, bool] = {"session": False, "weekly": False}
+        self._warned: dict[str, bool] = {key: False for key in PERIOD_KEYS}
+        self._critical: dict[str, bool] = {key: False for key in PERIOD_KEYS}
 
     def _reset_if_recovered(self, key: str, pct: float, threshold: float) -> None:
         """Clear flags when usage drops back under the threshold."""
@@ -83,31 +85,26 @@ def check_and_notify(data: dict, threshold: float, state: NotifyState) -> None:
     """
     critical_threshold = min(threshold + _CRITICAL_OFFSET, 100.0)
 
-    for key in ("session", "weekly"):
-        pct: float = data[key]["used_pct"]
-        resets_at: str = data[key]["resets_at"]
+    for key, period in iter_periods(data):
+        pct: float = period["used_pct"]
+        resets = f" — resets at {period['resets_at']}" if period.get("resets_at") else ""
         label = _label(key)
 
-        # Warning check
         if state.should_warn(key, pct, threshold):
             _send(
                 title=f"⚠️ Ollama {label} quota warning",
                 message=(
                     f"{label} usage at {pct:.1f}% (threshold: {threshold:.0f}%)"
-                    f" — resets at {resets_at}"
+                    f"{resets}"
                 ),
             )
 
-        # Critical check — indépendant du warning ci-dessus : les deux peuvent
-        # se déclencher sur le même tick si l'usage franchit directement le seuil critique.
+        # Not elif: both levels can fire on the same tick.
         if state.should_critical(key, pct, critical_threshold):
             _send(
                 title=f"🔴 Ollama {label} quota critical",
-                message=(
-                    f"{label} usage at {pct:.1f}% — resets at {resets_at}"
-                ),
+                message=f"{label} usage at {pct:.1f}%{resets}",
             )
-
 
 
 def notify_available() -> bool:

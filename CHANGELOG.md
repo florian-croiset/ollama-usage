@@ -7,6 +7,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Fixed
+- Parsing no longer fails on the new `ollama.com/settings` page introduced
+  with credit-based pricing (Aug 31, 2026): the Session / Weekly meters were
+  replaced by a single monthly meter ("Free usage", "Pro usage"...)
+- Plan names made of several words or containing a hyphen (e.g. "Pro Max")
+  no longer make parsing fail
+
+### Added
+- Official usage API support: `GET https://ollama.com/api/usage` with an
+  ollama.com API key, via `--api-key`, the `OLLAMA_API_KEY` environment
+  variable, or `get_usage_api()` in Python. Used in priority when a key is
+  available; cookie scraping remains the fallback. The API does not expose the plan,
+  reset dates, credits balance or per-model share (returned as `null`)
+- `spend`: cost over the last 4 weeks (API source only)
+- `source` key (`"api"` or `"web"`) in the usage dict
+- `monthly` quota (used %, reset date, per-model breakdown) for Free, Pro,
+  Max and Team credit-based plans
+- `credits_balance`: current "Usage credits" balance in USD (`null` if absent)
+- `iter_periods()` helper to iterate over the quotas present in a usage dict
+- Widget countdown shows days for long reset periods (e.g. `29d 00h`)
+
+### Removed
+- **Breaking:** cookie reading from Chromium-based browsers (Chrome, Edge,
+  Brave, Opera). On Windows, Chrome 127+ App-Bound Encryption (`v20` cookies)
+  made decryption fail for every cookie; on macOS / Linux the implementation
+  used the wrong cipher (AES-GCM instead of AES-128-CBC) and ignored keyring
+  (`v11`) keys. `get_cookie_chrome()` & co. and `--browser chrome|edge|brave|opera`
+  now raise a clear error pointing to `OLLAMA_API_KEY`, Firefox or `--cookie`.
+  Auto-detection only tries Firefox
+- `cryptography`, `pywin32` and `colorama` dependencies — the package now has
+  **no runtime dependencies**. Terminal colors use plain ANSI codes, with
+  Windows 10+ console support enabled through `ctypes` (`SetConsoleMode`)
+
+### Changed
+- Colors are no longer written when output is redirected (pipe, file, cron);
+  `NO_COLOR` disables them and `FORCE_COLOR` forces them
+- `session` and `weekly` are now `null` when the plan has no such limit;
+  legacy Pro / Max subscriptions keep reporting them as before
+- `--alert`, `--notify`, text output and widget handle whichever quotas the
+  plan exposes
+
 
 ## [0.1.3] - 2026-07-11
 

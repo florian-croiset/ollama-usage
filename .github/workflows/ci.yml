@@ -23,10 +23,9 @@ jobs:
       - name: Ruff
         run: ruff check ollama_usage/
       - name: Bandit
-        # B404/B603/B607 : subprocess macOS chemin système connu (non injectable)
-        # B310 : urlopen sur URL https:// hardcodée
-        # B110 : except-pass intentionnels dans le widget Tkinter
-        run: bandit -r ollama_usage/ --skip B404,B603,B607,B310,B110
+        # B310: urlopen on a hardcoded https:// URL
+        # B110: intentional except-pass in the Tkinter widget
+        run: bandit -r ollama_usage/ --skip B310,B110
 
   test:
     name: Tests (Python ${{ matrix.python-version }})

@@ -22,8 +22,8 @@ _SSL_CONTEXT = ssl.create_default_context()
 class ModelUsage:
     model: str
     requests: int
-    share_pct: float   # % relatif occupé dans le fill (somme = ~100%)
-    color: str = "#888888"  # couleur hex du segment (issue du HTML)
+    share_pct: float   # share of the meter fill (sums to ~100%)
+    color: str = "#888888"
 
 
 @dataclass
@@ -33,14 +33,22 @@ class PeriodUsage:
     models: list[ModelUsage] = field(default_factory=list)
 
 
+# session/weekly: legacy Pro/Max subscriptions; monthly: credit-based plans (since 2026-08-31).
+PERIOD_KEYS = ("session", "weekly", "monthly")
+
+
 @dataclass
 class UsageData:
     plan: str
-    session: PeriodUsage
-    weekly: PeriodUsage
+    session: PeriodUsage | None = None
+    weekly: PeriodUsage | None = None
+    monthly: PeriodUsage | None = None
+    credits_balance: float | None = None  # USD
 
     def to_dict(self) -> dict:
-        def _period(p: PeriodUsage) -> dict:
+        def _period(p: PeriodUsage | None) -> dict | None:
+            if p is None:
+                return None
             return {
                 "used_pct": p.used_pct,
                 "resets_at": p.resets_at,
@@ -59,10 +67,17 @@ class UsageData:
             "plan": self.plan,
             "session": _period(self.session),
             "weekly": _period(self.weekly),
+            "monthly": _period(self.monthly),
+            "credits_balance": self.credits_balance,
+            "spend": None,  # API only
+            "source": "web",
         }
 
 
-# --- HTTP ---
+def iter_periods(data: dict) -> list[tuple[str, dict]]:
+    """Return the (key, period) pairs present in a usage dict, in display order."""
+    return [(key, data[key]) for key in PERIOD_KEYS if data.get(key)]
+
 
 def _fetch_html(cookie: str) -> str:
     """Fetch the settings page HTML using the provided session cookie."""
@@ -102,42 +117,74 @@ def _check_auth(html: str) -> None:
     logger.debug("Auth check passed")
 
 
-# --- Parsing ---
-
 def _extract_plan(html: str) -> str:
-    match = re.search(r'capitalize[^>]*>\s*(\w+)\s*</', html)
+    match = re.search(r'capitalize[^>]*>\s*(\w[\w -]*?)\s*</', html)
     if not match:
         raise ParseError("Could not extract plan from HTML.")
     return match.group(1).lower()
 
 
-def _extract_percentages(html: str) -> tuple[float, float]:
-    # Cible les aria-label des divs track : unique par période, insensible au
-    # formatage multi-ligne des <span> et aux doublons introduits par le nouveau HTML.
-    matches = re.findall(
-        r'aria-label="(?:Session|Weekly) usage\s+([\d.]+)%\s*used"',
-        html,
-    )
-    if len(matches) < 2:
-        # Fallback sur les <span class="text-sm..."> (ancien HTML sans aria-label)
-        matches = re.findall(
-            r'<span[^>]*class="text-sm[^"]*"[^>]*>\s*([\d.]+)%\s*used[\s\S]*?</span',
-            html,
+# e.g. aria-label="Free usage 12.5% used" (or Session / Weekly / Pro / Max...)
+_METER_ARIA_RE = re.compile(
+    r'aria-label="([A-Za-z][\w -]*?)\s+usage\s+([\d.]+)%\s*used"',
+    re.IGNORECASE,
+)
+# Fallback: <span>Free usage</span> <span>12.5% used</span>
+_METER_TEXT_RE = re.compile(
+    r'>\s*([A-Za-z][\w -]*?)\s+usage\s*</span\s*>\s*<span[^>]*>\s*([\d.]+)%\s*used',
+    re.IGNORECASE,
+)
+_RESET_TIME_RE = re.compile(r'data-time="([^"]+)"')
+_CREDITS_RE = re.compile(
+    r'id="extra-usage-balance"[^>]*>\s*(-?)\s*\$\s*(-?[\d,]+(?:\.\d+)?)'
+)
+
+
+def _period_key(label: str) -> str:
+    """Map a meter label to a period key ('Free', 'Pro', 'Max'... → monthly)."""
+    label = label.strip().lower()
+    if label == "session":
+        return "session"
+    if label == "weekly":
+        return "weekly"
+    return "monthly"
+
+
+def _extract_periods(html: str) -> dict[str, PeriodUsage]:
+    """Split the page by meter and extract the %, reset date and breakdown of each one."""
+    matches = list(_METER_ARIA_RE.finditer(html)) or list(_METER_TEXT_RE.finditer(html))
+    if not matches:
+        raise ParseError("Could not find any usage percentages (expected '<plan> usage N% used').")
+
+    periods: dict[str, PeriodUsage] = {}
+    for i, match in enumerate(matches):
+        label, pct = match.group(1), match.group(2)
+        key = _period_key(label)
+        if key in periods:
+            continue
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(html)
+        chunk = html[match.end():end]
+        reset = _RESET_TIME_RE.search(chunk)
+        if not reset:
+            raise ParseError(f"Could not find reset timestamp for '{label} usage'.")
+        periods[key] = PeriodUsage(
+            used_pct=float(pct),
+            resets_at=reset.group(1),
+            models=_parse_fill_models(chunk[:reset.start()]),
         )
-    if len(matches) < 2:
-        raise ParseError(f"Expected 2 usage percentages, found {len(matches)}.")
-    return float(matches[0]), float(matches[1])
+    return periods
 
 
-def _extract_reset_times(html: str) -> tuple[str, str]:
-    matches = re.findall(r'data-time="([^"]+)"', html)
-    if len(matches) < 2:
-        raise ParseError(f"Expected 2 reset timestamps, found {len(matches)}.")
-    return matches[0], matches[1]
+def _extract_credits_balance(html: str) -> float | None:
+    match = _CREDITS_RE.search(html)
+    if not match:
+        return None
+    sign, amount = match.groups()
+    return float(sign + amount.replace(",", ""))
 
 
 def _parse_fill_models(fill_html: str) -> list[ModelUsage]:
-    """Extrait les ModelUsage depuis un fragment HTML (segments du fill)."""
+    """Extract ModelUsage entries from an HTML fragment (fill segments)."""
     entries = re.findall(
         r'style="width:\s*([\d.]+)%;\s*background:\s*(#[0-9a-fA-F]{6})[^"]*"'
         r'[^>]*data-model="([^"]+)"[^>]*data-requests="(\d+)"',
@@ -149,34 +196,25 @@ def _parse_fill_models(fill_html: str) -> list[ModelUsage]:
     ]
 
 
-def _extract_models_per_period(html: str) -> tuple[list[ModelUsage], list[ModelUsage]]:
-    """Retourne (session_models, weekly_models) en splitant sur 'Weekly usage'."""
-    parts = html.split("Weekly usage", 1)
-    session_html = parts[0]
-    weekly_html = parts[1] if len(parts) > 1 else ""
-    return _parse_fill_models(session_html), _parse_fill_models(weekly_html)
-
-
 def parse_html(html: str) -> dict:
-    """Parse the settings page HTML and return a usage dict."""
+    """Parse the settings page HTML and return a usage dict.
+
+    Periods absent from the page (e.g. session/weekly on credit-based plans,
+    monthly on legacy Pro/Max subscriptions) are returned as None.
+    """
     _check_auth(html)
-    plan = _extract_plan(html)
-    session_pct, weekly_pct = _extract_percentages(html)
-    session_time, weekly_time = _extract_reset_times(html)
-    session_models, weekly_models = _extract_models_per_period(html)
     logger.debug("Parsing HTML...")
+    plan = _extract_plan(html)
+    periods = _extract_periods(html)
+    credits_balance = _extract_credits_balance(html)
     logger.debug(
-        "Parsed: plan=%s session=%.1f%% (%d models) weekly=%.1f%% (%d models)",
-        plan, session_pct, len(session_models), weekly_pct, len(weekly_models),
+        "Parsed: plan=%s periods=%s credits=%s",
+        plan,
+        ", ".join(f"{k}={p.used_pct:.1f}% ({len(p.models)} models)" for k, p in periods.items()),
+        credits_balance,
     )
-    return UsageData(
-        plan=plan,
-        session=PeriodUsage(used_pct=session_pct, resets_at=session_time, models=session_models),
-        weekly=PeriodUsage(used_pct=weekly_pct, resets_at=weekly_time, models=weekly_models),
-    ).to_dict()
+    return UsageData(plan=plan, credits_balance=credits_balance, **periods).to_dict()
 
-
-# --- Public API ---
 
 def get_usage(cookie: str) -> dict:
     """Fetch and return Ollama Cloud usage for the given session cookie."""

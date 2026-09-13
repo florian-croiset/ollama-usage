@@ -1,10 +1,66 @@
+# Python bytecode
 __pycache__/
-*.pyc
-*.pyo
-.env
-dist/
+*.py[cod]
+*$py.class
+
+# Packaging / build
 build/
+dist/
+sdist/
+wheels/
 *.egg-info/
+*.egg
+.eggs/
+*.whl
+pip-wheel-metadata/
+MANIFEST
+
+# Virtual environments
 .venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Tests / coverage
 .pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.cache/
+
+# Linters / type checkers
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.pyright/
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
 *.txt
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs / temp
+*.log
+*.tmp
+.ipynb_checkpoints/

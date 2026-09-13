@@ -1,4 +1,5 @@
-from ollama_usage.scraper import get_usage
+from ollama_usage.scraper import get_usage, iter_periods
+from ollama_usage.api import get_usage_api
 from ollama_usage.exceptions import (
     OllamaUsageError,
     AuthError,
@@ -10,6 +11,8 @@ from ollama_usage.exceptions import (
 
 __all__ = [
     "get_usage",
+    "get_usage_api",
+    "iter_periods",
     "OllamaUsageError",
     "AuthError",
     "ParseError",
