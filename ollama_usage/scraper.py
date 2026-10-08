@@ -124,14 +124,15 @@ def _extract_plan(html: str) -> str:
     return match.group(1).lower()
 
 
-# e.g. aria-label="Free usage 12.5% used" (or Session / Weekly / Pro / Max...)
+# e.g. aria-label="Free usage 12.5% used" (or Session / Weekly / Pro / Max...).
+# Since 2026-10 the page words it "Free usage: 12.5%": colon and "used" are optional.
 _METER_ARIA_RE = re.compile(
-    r'aria-label="([A-Za-z][\w -]*?)\s+usage\s+([\d.]+)%\s*used"',
+    r'aria-label="([A-Za-z][\w -]*?)\s+usage:?\s+([\d.]+)%(?:\s*used)?"',
     re.IGNORECASE,
 )
-# Fallback: <span>Free usage</span> <span>12.5% used</span>
+# Fallback: <span>Free usage</span> <span>12.5% used</span> (or just "12.5%")
 _METER_TEXT_RE = re.compile(
-    r'>\s*([A-Za-z][\w -]*?)\s+usage\s*</span\s*>\s*<span[^>]*>\s*([\d.]+)%\s*used',
+    r'>\s*([A-Za-z][\w -]*?)\s+usage\s*</span\s*>\s*<span[^>]*>\s*([\d.]+)%(?:\s*used)?',
     re.IGNORECASE,
 )
 _RESET_TIME_RE = re.compile(r'data-time="([^"]+)"')
@@ -154,7 +155,7 @@ def _extract_periods(html: str) -> dict[str, PeriodUsage]:
     """Split the page by meter and extract the %, reset date and breakdown of each one."""
     matches = list(_METER_ARIA_RE.finditer(html)) or list(_METER_TEXT_RE.finditer(html))
     if not matches:
-        raise ParseError("Could not find any usage percentages (expected '<plan> usage N% used').")
+        raise ParseError("Could not find any usage percentages (expected '<plan> usage N%').")
 
     periods: dict[str, PeriodUsage] = {}
     for i, match in enumerate(matches):

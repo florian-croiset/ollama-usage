@@ -7,6 +7,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Fixed
+- Parsing the `ollama.com/settings` page works again: the usage meter is now worded
+  "Free usage: 14.8%" (colon, no "used"), which was no longer recognised
+- `ollama.com/api/usage` no longer returns `limits`, so an API key alone failed with
+  "Usage API response has no 'limits' object". The response is now read as a spend
+  time series: `spend` is filled (over the last 7 days, `period` is `"7d"` instead of
+  `"last_4_weeks"`) and `session` / `weekly` / `monthly` are `None`
+
+### Added
+- `get_usage_with_fallback(api_key, cookie=None)`: calls the API and, since it no
+  longer reports the quota, completes it from the settings page when a session cookie
+  is given or found (`OLLAMA_BROWSER_COOKIE`, Firefox). The CLI (`--api-key`,
+  `OLLAMA_API_KEY`) and the widget use it, and the CLI says so on stderr when no cookie
+  could be found
+
 
 ## [0.2.0] - 2026-09-13
 

@@ -8,16 +8,16 @@
 
 Two data sources are supported:
 
-| | **API key** (recommended) | **Session cookie** |
+| | **API key** | **Session cookie** |
 |---|---|---|
 | Endpoint | `ollama.com/api/usage` | scrapes `ollama.com/settings` |
 | Credentials | API key from [ollama.com/settings/keys](https://ollama.com/settings/keys) | auto-detected in Firefox, or copied manually from any browser |
-| Usage % + per-model requests | ✅ | ✅ |
-| Spend over the last 4 weeks | ✅ | ❌ |
+| Usage % + per-model requests | ❌ (no longer reported since 2026-10-07) | ✅ |
+| Spend over the last 7 days | ✅ | ❌ |
 | Plan name, reset dates, credits balance, per-model share | ❌ | ✅ |
 
 Source selection in the CLI: `--api-key` → `--cookie` / `--browser` → `OLLAMA_API_KEY` → `OLLAMA_BROWSER_COOKIE` → Firefox auto-detection.  
-In short: set `OLLAMA_API_KEY` and the official API is used; without it, the session cookie is used.
+In short: set `OLLAMA_API_KEY` and the official API is queried; since it no longer reports the usage percentage, the session cookie (if one is found) is then read as well for the quota. Without a key, only the session cookie is used.
 
 > ⚠️ `ollama.com/api/usage` is not documented by Ollama yet ([issue #12532](https://github.com/ollama/ollama/issues/12532)) and may change.
 
@@ -109,13 +109,9 @@ Quotas that don't apply to your plan are returned as `null` and hidden from the 
 
 ### Example output
 
-With an API key:
+With an API key only (no cookie available — the API reports spend, not the quota):
 ```
-Monthly : 18.4% used
-    deepseek-v3.1:671b       112 req
-    gpt-oss:120b              64 req
-    web search                21 req
-Spend   : $1.20 (last 4 weeks)
+Spend   : $0.12 (7d)
 ```
 
 With the session cookie (adds plan, reset date, per-model share and credits balance):
@@ -233,11 +229,18 @@ from ollama_usage import get_usage_api
 
 usage = get_usage_api(os.environ["OLLAMA_API_KEY"])
 
-print(usage["monthly"]["used_pct"])         # 18.4
-print(usage["spend"]["cost_usd"])           # 1.2 (last 4 weeks)
-for m in usage["monthly"]["models"]:
-    print(m["model"], m["requests"])        # "gpt-oss:120b" 64
-# plan, resets_at, credits_balance and share_pct are None with this source
+print(usage["spend"]["cost_usd"])           # 0.12 (last 7 days)
+# Since 2026-10-07 the API reports no quota: session / weekly / monthly are None,
+# as are plan, resets_at, credits_balance and share_pct.
+```
+
+To get the quota as well, let the settings page complete the API result (it looks for
+a cookie in `OLLAMA_BROWSER_COOKIE` or Firefox, or takes one you pass):
+```python
+from ollama_usage import get_usage_with_fallback
+
+usage = get_usage_with_fallback(os.environ["OLLAMA_API_KEY"])   # or (key, cookie)
+print(usage["monthly"]["used_pct"], usage["spend"]["cost_usd"])
 ```
 
 ### With the session cookie
@@ -342,8 +345,8 @@ Chromium-based browsers encrypt their cookies (App-Bound Encryption on Windows s
 - [x] Environment variable support (`OLLAMA_BROWSER_COOKIE`)
 - [x] Per-model usage breakdown (`session.models`, `weekly.models`)
 - [x] Credit-based plans (`monthly`, `credits_balance`)
-- [x] Official usage API with an API key (`ollama.com/api/usage`, `--api-key`, `OLLAMA_API_KEY`)
-- [ ] Drop scraping once `/api/usage` exposes plan, reset dates and credits balance
+- [x] Official usage API with an API key (`ollama.com/api/usage`, `--api-key`, `OLLAMA_API_KEY`) — spend only since 2026-10-07
+- [ ] Drop scraping once `/api/usage` exposes the quota percentage, plan, reset dates and credits balance again
 
 ---
 

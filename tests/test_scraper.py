@@ -632,8 +632,15 @@ def make_monthly_html(
     buttons: str = "",
     balance: str | None = "$0",
     with_aria: bool = True,
+    reworded: bool = False,
 ) -> str:
-    aria = f'aria-label="{label} usage {pct}% used"' if with_aria else ""
+    """`reworded` is the page as of 2026-10: "Free usage: N%", no "used", "Refills in"."""
+    if reworded:
+        aria = f'aria-label="{label} usage: {pct}%"' if with_aria else ""
+        pct_text, reset_text = f"{pct}%", "Refills in 3 days."
+    else:
+        aria = f'aria-label="{label} usage {pct}% used"' if with_aria else ""
+        pct_text, reset_text = f"{pct}% used", "Resets in 4 weeks."
     balance_html = (
         f'<div id="extra-usage-balance" class="text-lg font-medium">{balance}</div>'
         if balance is not None else ""
@@ -650,7 +657,7 @@ def make_monthly_html(
     <div class="flex justify-between mb-2">
       <span class="text-sm">{label} usage</span>
       <span class="text-sm"
-        >{pct}% used</span
+        >{pct_text}</span
       >
     </div>
     <div class="relative group" data-usage-meter>
@@ -664,7 +671,7 @@ def make_monthly_html(
       </div>
     </div>
     <div class="text-xs text-neutral-500 mt-1 local-time" data-time="{resets_at}">
-      Resets in 4 weeks.
+      {reset_text}
     </div>
     <div id="monthly-usage-models" class="mt-3 space-y-1.5">
       <span class="h-2 w-2 flex-none rounded-sm" style="background: #22c55e" aria-hidden="true"></span>
@@ -692,6 +699,15 @@ class TestMonthlyPlans:
         data = parse_html(make_monthly_html(label=label, pct=12.5))
         assert data["plan"] == label.lower()
         assert data["monthly"]["used_pct"] == 12.5
+        assert data["session"] is None
+        assert data["weekly"] is None
+
+    @pytest.mark.parametrize("with_aria", [True, False])
+    def test_reworded_meter_without_used(self, with_aria: bool) -> None:
+        # aria-label path, and the <span> fallback when the aria-label is absent
+        data = parse_html(make_monthly_html(pct=14.8, reworded=True, with_aria=with_aria))
+        assert data["monthly"]["used_pct"] == 14.8
+        assert data["monthly"]["resets_at"] == "2026-10-01T00:00:00Z"
         assert data["session"] is None
         assert data["weekly"] is None
 
