@@ -15,7 +15,7 @@ import threading
 import tkinter as tk
 from datetime import datetime, timezone
 
-from ollama_usage.api import get_usage_api
+from ollama_usage.api import get_usage_with_fallback
 from ollama_usage.exceptions import NetworkError, OllamaUsageError
 from ollama_usage.scraper import get_usage, iter_periods
 
@@ -262,7 +262,7 @@ class OllamaWidget:
     def _fetch(self) -> None:
         try:
             if self._api_key:
-                self._data = get_usage_api(self._api_key)
+                self._data = get_usage_with_fallback(self._api_key, self._cookie)
             else:
                 self._data = get_usage(self._cookie or "")
             self._error = None

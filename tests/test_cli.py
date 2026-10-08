@@ -329,7 +329,7 @@ class TestApiSource:
     def _run(self, argv: list[str], env_key: str | None = None):
         from ollama_usage.cli import main
         with patch("ollama_usage.cli.get_api_key_env", return_value=env_key), \
-             patch("ollama_usage.cli.get_usage_api", return_value=make_api_data()) as api, \
+             patch("ollama_usage.cli.get_usage_with_fallback", return_value=make_api_data()) as api, \
              patch("ollama_usage.cli.get_usage", return_value=make_data()) as web, \
              patch("ollama_usage.cli.get_cookie_env", return_value=None), \
              patch("sys.argv", ["ollama-usage", "--quiet", *argv]):
@@ -338,12 +338,12 @@ class TestApiSource:
 
     def test_api_key_flag_uses_api(self) -> None:
         api, web = self._run(["--api-key", "sk-flag"])
-        api.assert_called_once_with("sk-flag")
+        api.assert_called_once_with("sk-flag", None)
         web.assert_not_called()
 
     def test_env_api_key_uses_api(self) -> None:
         api, web = self._run([], env_key="sk-env")
-        api.assert_called_once_with("sk-env")
+        api.assert_called_once_with("sk-env", None)
         web.assert_not_called()
 
     def test_explicit_cookie_beats_env_api_key(self) -> None:
@@ -353,12 +353,12 @@ class TestApiSource:
 
     def test_api_key_flag_beats_cookie_flag(self) -> None:
         api, web = self._run(["--api-key", "sk-flag", "--cookie", "abc"])
-        api.assert_called_once_with("sk-flag")
+        api.assert_called_once_with("sk-flag", None)
         web.assert_not_called()
 
     def test_api_key_is_sanitized(self) -> None:
         api, _ = self._run(["--api-key", " sk-flag\r\n"])
-        api.assert_called_once_with("sk-flag")
+        api.assert_called_once_with("sk-flag", None)
 
 
 class TestDisplayApiData:

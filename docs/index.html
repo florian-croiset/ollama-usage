@@ -127,7 +127,7 @@
     <pre class="wrap"><code><span class="prompt">$ </span>export OLLAMA_API_KEY=your_key
 <span class="comment"># PowerShell: $env:OLLAMA_API_KEY = "your_key"</span>
 <span class="prompt">$ </span>ollama-usage</code></pre>
-    <p>No API key? Log in to ollama.com with Firefox and the session cookie is read automatically. With another browser, copy the <code>__Secure-session</code> cookie and pass it with <code>--cookie</code> or <code>OLLAMA_BROWSER_COOKIE</code> (Chromium-based browsers are not read automatically).</p>
+    <p>Since 2026-10-07 the API reports your spend but no longer the usage percentage: ollama-usage then completes it from the settings page when it finds a session cookie. No API key? Log in to ollama.com with Firefox and the session cookie is read automatically. With another browser, copy the <code>__Secure-session</code> cookie and pass it with <code>--cookie</code> or <code>OLLAMA_BROWSER_COOKIE</code> (Chromium-based browsers are not read automatically).</p>
     <p>Desktop notifications need an extra:</p>
     <pre class="wrap"><code><span class="prompt">$ </span>pip install "ollama-usage[notify] @ git+https://github.com/florian-croiset/ollama-usage"</code></pre>
   </section>
@@ -135,12 +135,12 @@
   <section>
     <h2>Example output</h2>
     <pre><code><span class="prompt">$ </span>ollama-usage
-Monthly : <span class="ok">18.4%</span> used
-    deepseek-v3.1:671b       112 req
-    gpt-oss:120b              64 req
-    web search                21 req
-Spend   : $1.20 (last 4 weeks)</code></pre>
-    <p>With the session cookie instead of an API key, you also get the plan, reset date, share per model and credits balance.</p>
+Monthly : <span class="ok">18.4%</span> used — reset at 2026-10-01T00:00:00Z
+    deepseek-v3.1:671b       112 req  ( 61.0%)
+    gpt-oss:120b              64 req  ( 35.0%)
+    web search                21 req  (  4.0%)
+Credits : $5.00</code></pre>
+    <p>The quota, plan, reset date, share per model and credits balance come from the session cookie. An API key adds your spend over the last 7 days.</p>
   </section>
 
   <section>

@@ -9,7 +9,7 @@ import time
 from importlib.metadata import version as get_version
 
 from ollama_usage.ansi import GREEN, RED, YELLOW, colorize, enable_windows_ansi
-from ollama_usage.api import get_api_key_env, get_usage_api
+from ollama_usage.api import get_api_key_env, get_usage_with_fallback
 from ollama_usage.cookie import (
     get_cookie_auto,
     get_cookie_brave,
@@ -244,7 +244,17 @@ def main():
             logger.debug("Cookie obtained (***) — scraping ollama.com/settings")
 
         def fetch() -> dict:
-            return get_usage_api(api_key) if api_key else get_usage(cookie or "")
+            if not api_key:
+                return get_usage(cookie or "")
+            data = get_usage_with_fallback(api_key, cookie)
+            if data.get("source") == "api" and not iter_periods(data) and not args.quiet:
+                print(
+                    "Note: the API no longer reports the usage percentage (since 2026-10-07). "
+                    "Provide a session cookie (--cookie, OLLAMA_BROWSER_COOKIE or a logged-in "
+                    "browser) to see it.",
+                    file=sys.stderr,
+                )
+            return data
 
         alert_triggered = False
 

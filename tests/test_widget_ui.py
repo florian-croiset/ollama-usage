@@ -332,7 +332,7 @@ class TestFetch:
     def test_uses_cookie(self) -> None:
         w = make_widget()
         with patch.object(widget, "get_usage", return_value={"x": 1}) as web, \
-             patch.object(widget, "get_usage_api") as api:
+             patch.object(widget, "get_usage_with_fallback") as api:
             w._fetch()
         web.assert_called_once_with("cookie")
         api.assert_not_called()
@@ -342,10 +342,10 @@ class TestFetch:
     def test_api_key_takes_precedence(self) -> None:
         w = make_widget()
         w._api_key = "sk"
-        with patch.object(widget, "get_usage_api", return_value={"y": 2}) as api, \
+        with patch.object(widget, "get_usage_with_fallback", return_value={"y": 2}) as api, \
              patch.object(widget, "get_usage") as web:
             w._fetch()
-        api.assert_called_once_with("sk")
+        api.assert_called_once_with("sk", "cookie")
         web.assert_not_called()
         assert w._data == {"y": 2}
 

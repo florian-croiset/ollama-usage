@@ -1,4 +1,4 @@
-from ollama_usage.api import get_usage_api
+from ollama_usage.api import get_usage_api, get_usage_with_fallback
 from ollama_usage.exceptions import (
     AuthError,
     BrowserNotFoundError,
@@ -18,5 +18,6 @@ __all__ = [
     "UnsupportedOSError",
     "get_usage",
     "get_usage_api",
+    "get_usage_with_fallback",
     "iter_periods",
 ]
