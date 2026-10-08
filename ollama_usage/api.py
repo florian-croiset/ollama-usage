@@ -4,6 +4,11 @@ Authenticated with an ollama.com API key (https://ollama.com/settings/keys).
 Unlike the settings page, the API does not expose the plan name, reset dates,
 per-model share of the meter or the usage credits balance — those fields are
 returned as None.
+
+Since 2026-10-07 the endpoint no longer reports a quota percentage at all: it
+returns the spend over the last days (``range``, ``totals``, ``buckets``). The
+periods of the usage dict are then None and only ``spend`` is filled; use
+:func:`get_usage_with_fallback` to get the percentage from the settings page.
 """
 
 from __future__ import annotations
@@ -113,16 +118,35 @@ def _parse_spend(raw) -> dict | None:
     }
 
 
+def _parse_totals_spend(payload: dict) -> dict | None:
+    """Spend from the time-series layout: totals.usage_usd over [from, until]."""
+    totals = payload.get("totals")
+    if not isinstance(totals, dict) or totals.get("usage_usd") is None:
+        return None
+    try:
+        cost = float(totals["usage_usd"])
+    except (TypeError, ValueError):
+        return None
+    return {
+        "cost_usd": cost,
+        "period": payload.get("range"),
+        "starting_at": payload.get("from"),
+        "ending_at": payload.get("until"),
+    }
+
+
 def parse_api_response(payload: dict) -> dict:
     """Convert an /api/usage JSON payload into the usage dict returned by get_usage()."""
     limits = payload.get("limits")
     if not isinstance(limits, dict):
-        raise ParseError("Usage API response has no 'limits' object.")
+        if not isinstance(payload.get("totals"), dict):
+            raise ParseError("Usage API response has no 'limits' object.")
+        limits = {}  # time-series layout: spend only, no quota percentage
     data = {
         "plan": None,
         **{key: _parse_period(limits.get(key)) for key in PERIOD_KEYS},
         "credits_balance": None,
-        "spend": _parse_spend(payload.get("activity")),
+        "spend": _parse_spend(payload.get("activity")) or _parse_totals_spend(payload),
         "source": "api",
     }
     logger.debug(
@@ -135,3 +159,30 @@ def parse_api_response(payload: dict) -> dict:
 def get_usage_api(api_key: str) -> dict:
     """Fetch and return Ollama Cloud usage using the official API and an API key."""
     return parse_api_response(_fetch_json(api_key))
+
+
+def get_usage_with_fallback(api_key: str, cookie: str | None = None) -> dict:
+    """Usage from the API, completed from the settings page when the API has no quota.
+
+    The API alone no longer gives a percentage (see the module docstring). When it
+    returns none and a session cookie is available — the one passed in, or the one
+    found in a browser — the settings page supplies the quota and the API's spend
+    is kept. Without any cookie the API-only result is returned unchanged.
+    """
+    from ollama_usage.cookie import get_cookie_auto, get_cookie_env
+    from ollama_usage.exceptions import OllamaUsageError
+    from ollama_usage.scraper import get_usage, iter_periods
+
+    data = get_usage_api(api_key)
+    if iter_periods(data):
+        return data
+    if not cookie:
+        try:
+            cookie = get_cookie_env() or get_cookie_auto()
+        except OllamaUsageError:
+            logger.debug("No session cookie available to complete the API result")
+            return data
+    logger.debug("API reported no quota — reading it from the settings page")
+    web = get_usage(cookie)
+    web["spend"] = data["spend"]
+    return web

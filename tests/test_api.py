@@ -10,8 +10,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ollama_usage.api import get_api_key_env, get_usage_api, parse_api_response
-from ollama_usage.exceptions import AuthError, NetworkError, ParseError
+from ollama_usage.api import (
+    get_api_key_env,
+    get_usage_api,
+    get_usage_with_fallback,
+    parse_api_response,
+)
+from ollama_usage.exceptions import AuthError, NetworkError, OllamaUsageError, ParseError
 
 
 MONTHLY_PAYLOAD = {
@@ -108,6 +113,81 @@ class TestParseLegacy:
         assert parse_api_response(payload)["session"]["models"] == [
             {"model": "qwen3", "requests": 7, "share_pct": None, "color": None},
         ]
+
+
+# /api/usage since 2026-10-07: spend over time, no quota percentage (invented values).
+TIMESERIES_PAYLOAD = {
+    "range": "7d",
+    "scope": "self",
+    "granularity": "day",
+    "from": "2026-09-06T00:00:00Z",
+    "until": "2026-09-13T00:00:00Z",
+    "totals": {"request_count": 47, "usage_usd": 1.68054},
+    "buckets": [
+        {"from": "2026-09-06T00:00:00Z", "until": "2026-09-07T00:00:00Z",
+         "request_count": 47, "usage_usd": 1.68054},
+    ],
+}
+
+
+class TestParseTimeSeries:
+
+    def test_no_quota_periods(self) -> None:
+        data = parse_api_response(TIMESERIES_PAYLOAD)
+        assert data["session"] is data["weekly"] is data["monthly"] is None
+        assert data["source"] == "api"
+
+    def test_spend_from_totals(self) -> None:
+        assert parse_api_response(TIMESERIES_PAYLOAD)["spend"] == {
+            "cost_usd": 1.68054,
+            "period": "7d",
+            "starting_at": "2026-09-06T00:00:00Z",
+            "ending_at": "2026-09-13T00:00:00Z",
+        }
+
+    def test_invalid_total_spend_none(self) -> None:
+        assert parse_api_response({"totals": {"usage_usd": "n/a"}})["spend"] is None
+
+
+class TestUsageWithFallback:
+
+    WEB = {"plan": "free", "session": None, "weekly": None,
+           "monthly": {"used_pct": 18.4, "resets_at": "2026-10-01T00:00:00Z", "models": []},
+           "credits_balance": 0.0, "spend": None, "source": "web"}
+
+    def _api(self, payload: dict):
+        return patch("ollama_usage.api._fetch_json", return_value=payload)
+
+    def test_quota_from_api_is_returned_untouched(self) -> None:
+        with self._api(MONTHLY_PAYLOAD), patch("ollama_usage.scraper.get_usage") as web:
+            data = get_usage_with_fallback("sk")
+        assert data["source"] == "api"
+        web.assert_not_called()
+
+    def test_falls_back_to_the_given_cookie_and_keeps_api_spend(self) -> None:
+        with self._api(TIMESERIES_PAYLOAD), \
+             patch("ollama_usage.scraper.get_usage", return_value=dict(self.WEB)) as web:
+            data = get_usage_with_fallback("sk", "cookie")
+        web.assert_called_once_with("cookie")
+        assert data["source"] == "web"
+        assert data["monthly"]["used_pct"] == 18.4
+        assert data["spend"]["cost_usd"] == 1.68054
+
+    def test_falls_back_to_a_browser_cookie(self) -> None:
+        with self._api(TIMESERIES_PAYLOAD), \
+             patch("ollama_usage.cookie.get_cookie_env", return_value=None), \
+             patch("ollama_usage.cookie.get_cookie_auto", return_value="auto"), \
+             patch("ollama_usage.scraper.get_usage", return_value=dict(self.WEB)) as web:
+            get_usage_with_fallback("sk")
+        web.assert_called_once_with("auto")
+
+    def test_without_any_cookie_returns_the_api_result(self) -> None:
+        with self._api(TIMESERIES_PAYLOAD), \
+             patch("ollama_usage.cookie.get_cookie_env", return_value=None), \
+             patch("ollama_usage.cookie.get_cookie_auto", side_effect=OllamaUsageError("none")):
+            data = get_usage_with_fallback("sk")
+        assert data["source"] == "api"
+        assert data["spend"]["cost_usd"] == 1.68054
 
 
 class TestParseEdgeCases:

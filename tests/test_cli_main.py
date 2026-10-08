@@ -41,7 +41,7 @@ def run(argv: list[str], **patches) -> dict[str, MagicMock]:
     """Run main() with `ollama_usage.cli.<name>` patched; return the mocks."""
     defaults = {
         "get_usage": MagicMock(return_value=usage()),
-        "get_usage_api": MagicMock(return_value=usage()),
+        "get_usage_with_fallback": MagicMock(return_value=usage()),
         "get_cookie_auto": MagicMock(return_value="auto-cookie"),
         "check_and_notify": MagicMock(),
         "_watch_countdown": MagicMock(side_effect=KeyboardInterrupt),
@@ -117,7 +117,7 @@ class TestCredentialSources:
         monkeypatch.setenv("OLLAMA_BROWSER_COOKIE", "env-cookie")
         monkeypatch.setenv("OLLAMA_API_KEY", "sk-env")
         mocks = run(["--quiet"])
-        mocks["get_usage_api"].assert_called_once_with("sk-env")
+        mocks["get_usage_with_fallback"].assert_called_once_with("sk-env", None)
         mocks["get_usage"].assert_not_called()
 
     def test_auto_detection_fallback(self) -> None:
@@ -129,7 +129,7 @@ class TestCredentialSources:
         monkeypatch.setenv("OLLAMA_API_KEY", "sk-env")
         mocks = run(["--browser", "firefox", "--quiet"], BROWSERS={"firefox": lambda: "ff"})
         mocks["get_usage"].assert_called_once_with("ff")
-        mocks["get_usage_api"].assert_not_called()
+        mocks["get_usage_with_fallback"].assert_not_called()
 
     def test_api_key_not_printed_in_debug_logs(self, caplog) -> None:
         with caplog.at_level(logging.DEBUG):
@@ -268,7 +268,7 @@ class TestWatch:
     def test_watch_uses_api(self) -> None:
         mocks = run(["--api-key", "sk", "--watch", "--quiet"],
                     _watch_countdown=MagicMock(side_effect=[None, KeyboardInterrupt]))
-        assert mocks["get_usage_api"].call_count == 2
+        assert mocks["get_usage_with_fallback"].call_count == 2
         mocks["get_usage"].assert_not_called()
 
 
