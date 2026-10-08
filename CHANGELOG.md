@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+
+## [0.2.1] - 2026-10-08
+
 ### Fixed
 - Parsing the `ollama.com/settings` page works again: the usage meter is now worded
   "Free usage: 12.5%" (colon, no "used"), which was no longer recognised
