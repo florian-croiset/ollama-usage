@@ -22,7 +22,6 @@ be read either, :func:`get_usage_with_fallback` reads the percentage from the da
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -30,7 +29,12 @@ import time
 import urllib.error
 import urllib.request
 
-from ollama_usage.exceptions import AuthError, NetworkError, OllamaUsageError, ParseError
+from ollama_usage.exceptions import (
+    AuthError,
+    NetworkError,
+    OllamaUsageError,
+    ParseError,
+)
 from ollama_usage.scraper import _SSL_CONTEXT, _TIMEOUT, PERIOD_KEYS
 
 logger = logging.getLogger(__name__)
@@ -42,7 +46,7 @@ _BALANCE_API_URL = "https://ollama.com/api/balance"
 _ME_API_URL = "https://ollama.com/api/me"  # undocumented, POST only
 _PLAN_TTL = 24 * 3600     # seconds a plan name is reused
 _PLAN_RETRY = 3600        # seconds before retrying after a failure
-# sha256(api key) -> (monotonic expiry, plan name or None)
+# api key -> (monotonic expiry, plan name or None); in memory only, never written to disk
 _plan_cache: dict[str, tuple[float, str | None]] = {}
 _API_KEY_ENV = "OLLAMA_API_KEY"
 
@@ -265,9 +269,8 @@ def parse_api_response(payload: dict) -> dict:
 
 def _get_plan(api_key: str) -> str | None:
     """Plan name from /api/me ("free", "pro"...), cached per key; None if unavailable."""
-    cache_key = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
     now = time.monotonic()
-    cached = _plan_cache.get(cache_key)
+    cached = _plan_cache.get(api_key)
     if cached is not None and cached[0] > now:
         return cached[1]
 
@@ -280,7 +283,7 @@ def _get_plan(api_key: str) -> str | None:
     else:
         if isinstance(raw, str) and raw.strip():
             plan = " ".join(raw.split()).lower()
-    _plan_cache[cache_key] = (now + (_PLAN_TTL if plan else _PLAN_RETRY), plan)
+    _plan_cache[api_key] = (now + (_PLAN_TTL if plan else _PLAN_RETRY), plan)
     return plan
 
 

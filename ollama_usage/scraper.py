@@ -18,7 +18,12 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 
-from ollama_usage.exceptions import AuthError, NetworkError, OllamaUsageError, ParseError
+from ollama_usage.exceptions import (
+    AuthError,
+    NetworkError,
+    OllamaUsageError,
+    ParseError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -267,15 +272,15 @@ def _parse_fill_models(fill_html: str) -> list[ModelUsage]:
 
 # --- usage report (/settings/usage/report, since 2026-11) ------------------------------
 
-_TOTAL_COST_RE = re.compile(r'<dt[^>]*>\s*Total cost\s*</dt>\s*<dd[^>]*>(.*?)</dd>', re.S | re.I)
-_MODEL_TABLE_RE = re.compile(r'id="usage-by-model".*?<tbody[^>]*>(.*?)</tbody>', re.S)
-_ROW_RE = re.compile(r'<tr\b[^>]*>(.*?)</tr>', re.S)
-_CELL_RE = re.compile(r'<td\b[^>]*>(.*?)</td>', re.S)
+_TOTAL_COST_RE = re.compile(r'<dt[^>]*>\s*Total cost\s*</dt>\s*<dd[^>]*>(.*?)</dd>', re.DOTALL | re.IGNORECASE)
+_MODEL_TABLE_RE = re.compile(r'id="usage-by-model".*?<tbody[^>]*>(.*?)</tbody>', re.DOTALL)
+_ROW_RE = re.compile(r'<tr\b[^>]*>(.*?)</tr>', re.DOTALL)
+_CELL_RE = re.compile(r'<td\b[^>]*>(.*?)</td>', re.DOTALL)
 # Chart legend: <i ... style="background: #34c759"></i>gpt-oss:120b</span>
 _LEGEND_RE = re.compile(
     r'<i\b[^>]*style="background:\s*(#[0-9a-fA-F]{3,8})[^"]*"[^>]*>\s*</i>\s*([^<]+?)\s*<'
 )
-_FETCHED_AT_RE = re.compile(r'data-usage-fetched[^>]*>.*?<time[^>]*datetime="([^"]+)"', re.S)
+_FETCHED_AT_RE = re.compile(r'data-usage-fetched[^>]*>.*?<time[^>]*datetime="([^"]+)"', re.DOTALL)
 _MONEY_RE = re.compile(r'(-?)\$\s*([\d,]+(?:\.\d+)?)')
 
 

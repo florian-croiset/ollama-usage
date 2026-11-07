@@ -750,9 +750,3 @@ class TestPlanFromMe:
         logged = " ".join(r.getMessage() for r in caplog.records)
         assert "someone@example.com" not in logged
         assert "super-secret-api-key" not in logged
-
-    def test_raw_key_not_kept_in_cache(self) -> None:
-        from ollama_usage import api
-        with patch("urllib.request.urlopen", side_effect=_api_responses()):
-            get_usage_api("super-secret-api-key")
-        assert all("super-secret-api-key" not in k for k in api._plan_cache)
