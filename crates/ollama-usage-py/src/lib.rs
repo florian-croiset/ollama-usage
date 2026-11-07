@@ -1,5 +1,6 @@
 //! Native part of the `ollama_usage` Python package. It hands the report over as
-//! schema 1.0 JSON; the typed Python API lives in `python/ollama_usage`.
+//! schema 1.0 JSON; the typed Python API lives in `python/ollama_usage`. It also
+//! runs the command-line tool for the package's `ollama-usage` entry point.
 
 use std::time::Duration;
 
@@ -62,9 +63,17 @@ fn fetch_error(error: &Error) -> PyErr {
     FetchError::new_err((kind, error.to_string(), retry_after))
 }
 
+/// Runs the `ollama-usage` command with `args`, the first being the program
+/// name, and returns its exit code. The GIL is released meanwhile.
+#[pyfunction]
+fn run_cli(py: Python<'_>, args: Vec<String>) -> u8 {
+    py.detach(|| ollama_usage_cli::run(args))
+}
+
 #[pymodule]
 fn _ollama_usage(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyClient>()?;
+    module.add_function(wrap_pyfunction!(run_cli, module)?)?;
     module.add("FetchError", module.py().get_type::<FetchError>())?;
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     module.add("SCHEMA_VERSION", ollama_usage::SCHEMA_VERSION)?;

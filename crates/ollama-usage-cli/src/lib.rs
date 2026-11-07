@@ -6,6 +6,7 @@ mod config;
 mod outcome;
 mod render;
 
+use std::ffi::OsString;
 use std::process::ExitCode;
 
 use anstream::{eprintln, print, println};
@@ -20,9 +21,19 @@ use crate::outcome::Outcome;
 
 const KEYS_URL: &str = "https://ollama.com/settings/keys";
 
-/// Runs the command with the process arguments and returns its exit code.
+/// Runs the command with the process arguments.
 pub fn main() -> ExitCode {
-    let args = match Args::try_parse() {
+    ExitCode::from(run(std::env::args_os()))
+}
+
+/// Runs the command with `args`, the first being the program name, and returns
+/// its exit code. Used by the binary and by the Python package's entry point.
+pub fn run<I, T>(args: I) -> u8
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let args = match Args::try_parse_from(args) {
         Ok(args) => args,
         Err(error) => {
             let shown_on_request = matches!(
@@ -31,25 +42,26 @@ pub fn main() -> ExitCode {
             );
             // Nothing useful can be done if the terminal is gone.
             let _ = error.print();
-            return if shown_on_request {
+            let outcome = if shown_on_request {
                 Outcome::Ok
             } else {
                 Outcome::Usage
-            }
-            .into();
+            };
+            return outcome as u8;
         }
     };
     configure_colors();
     if args.debug {
-        env_logger::Builder::new()
+        // Already installed when the Python entry point runs twice in a process.
+        let _ = env_logger::Builder::new()
             .filter_module("ollama_usage", log::LevelFilter::Debug)
             .format_timestamp(None)
-            .init();
+            .try_init();
     }
-    run(&args).into()
+    execute(&args) as u8
 }
 
-fn run(args: &Args) -> Outcome {
+fn execute(args: &Args) -> Outcome {
     let api_key = match api_key(args) {
         Ok(Some(key)) => key,
         Ok(None) => {

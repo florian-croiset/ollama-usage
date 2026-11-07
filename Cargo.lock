@@ -347,6 +347,7 @@ name = "ollama-usage-py"
 version = "1.0.0-alpha.1"
 dependencies = [
  "ollama-usage",
+ "ollama-usage-cli",
  "pyo3",
  "serde_json",
 ]

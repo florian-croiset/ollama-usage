@@ -23,6 +23,9 @@ classifiers = [
 ]
 dynamic = ["version"]
 
+[project.scripts]
+ollama-usage = "ollama_usage._cli:main"
+
 [project.urls]
 Homepage = "https://github.com/florian-croiset/ollama-usage"
 Repository = "https://github.com/florian-croiset/ollama-usage"

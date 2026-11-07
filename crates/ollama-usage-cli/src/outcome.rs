@@ -1,9 +1,8 @@
-use std::process::ExitCode;
-
 use ollama_usage::{Error, Report};
 
 /// The exit codes, listed in `--help`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub(crate) enum Outcome {
     Ok = 0,
     AlertReached = 1,
@@ -37,12 +36,6 @@ impl Outcome {
             Error::Auth(_) => Self::NoUsableKey,
             _ => Self::Failed,
         }
-    }
-}
-
-impl From<Outcome> for ExitCode {
-    fn from(outcome: Outcome) -> Self {
-        Self::from(outcome as u8)
     }
 }
 
