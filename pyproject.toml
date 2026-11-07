@@ -3,7 +3,7 @@ requires = ["maturin>=1.16.0,<2"]
 build-backend = "maturin"
 
 [project]
-name = "ollama-usage"
+name = "ollama-cloud-usage"
 description = "Read your Ollama Cloud quota, credits and per-model usage from the official API."
 readme = "README.md"
 license = "MIT"
@@ -24,7 +24,7 @@ classifiers = [
 dynamic = ["version"]
 
 [project.scripts]
-ollama-usage = "ollama_usage._cli:main"
+ollama-usage = "ollama_cloud_usage._cli:main"
 
 [project.urls]
 Homepage = "https://github.com/florian-croiset/ollama-usage"
@@ -35,11 +35,11 @@ Changelog = "https://github.com/florian-croiset/ollama-usage/blob/main/CHANGELOG
 [tool.maturin]
 manifest-path = "crates/ollama-usage-py/Cargo.toml"
 python-source = "python"
-module-name = "ollama_usage._ollama_usage"
+module-name = "ollama_cloud_usage._ollama_usage"
 features = ["extension-module"]
 
 [tool.pyright]
-include = ["python/ollama_usage", "examples"]
+include = ["python/ollama_cloud_usage", "examples"]
 typeCheckingMode = "strict"
 
 [tool.ruff]

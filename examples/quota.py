@@ -10,7 +10,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
-from ollama_usage import Client, OllamaUsageError
+from ollama_cloud_usage import Client, OllamaUsageError
 
 
 def main() -> int:

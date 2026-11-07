@@ -14,7 +14,7 @@ import argparse
 import os
 import sys
 
-from ollama_usage import Client, OllamaUsageError
+from ollama_cloud_usage import Client, OllamaUsageError
 
 
 def notify(message: str) -> None:

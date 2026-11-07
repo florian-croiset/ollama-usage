@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/ollama-usage", "crates/ollama-usage-cli", "crates/ollama-usage-py"]
 
 [workspace.package]
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/florian-croiset/ollama-usage"
@@ -11,7 +11,7 @@ homepage = "https://github.com/florian-croiset/ollama-usage"
 authors = ["Florian Croiset"]
 
 [workspace.dependencies]
-ollama-usage = { path = "crates/ollama-usage", version = "1.0.0-alpha.1" }
+ollama-usage = { path = "crates/ollama-usage", version = "1.0.0-alpha.2" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 time = { version = "0.3.55", features = ["formatting", "macros", "parsing", "serde"] }

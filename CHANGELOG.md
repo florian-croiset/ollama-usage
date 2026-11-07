@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Unreleased
 
 
+## [1.0.0-alpha.2] - 2026-11-07
+
+### Changed
+- The Python package is installed as `ollama-cloud-usage` and imported as
+  `ollama_cloud_usage`; the command keeps its name, `ollama-usage`. An unrelated
+  project is published on PyPI as `ollama-usage` with the same module and
+  command names. Uninstall `ollama-usage` before installing this version
+
+
 ## [1.0.0-alpha.1] - 2026-11-07
 
 Version 1.0 is a rewrite on a Rust core shared by the command and the Python

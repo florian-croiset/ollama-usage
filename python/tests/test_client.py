@@ -1,8 +1,8 @@
 import re
 import unittest
 
-import ollama_usage
-from ollama_usage import (
+import ollama_cloud_usage
+from ollama_cloud_usage import (
     ApiError,
     AuthError,
     Client,
@@ -10,7 +10,7 @@ from ollama_usage import (
     OllamaUsageError,
     RateLimitedError,
 )
-from ollama_usage._errors import from_native
+from ollama_cloud_usage._errors import from_native
 
 
 class ClientTest(unittest.TestCase):
@@ -53,8 +53,8 @@ class ErrorTest(unittest.TestCase):
 
 class MetadataTest(unittest.TestCase):
     def test_versions_are_exposed(self) -> None:
-        self.assertRegex(ollama_usage.__version__, re.compile(r"^\d+\.\d+\.\d+"))
-        self.assertEqual(ollama_usage.SCHEMA_VERSION, "1.0")
+        self.assertRegex(ollama_cloud_usage.__version__, re.compile(r"^\d+\.\d+\.\d+"))
+        self.assertEqual(ollama_cloud_usage.SCHEMA_VERSION, "1.0")
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ import argparse
 import os
 import sys
 
-from ollama_usage import Client, ModelUsage, OllamaUsageError, OtherUsage
+from ollama_cloud_usage import Client, ModelUsage, OllamaUsageError, OtherUsage
 
 ROW = "{:<{width}}  {:>8}  {:>10}  {:>10}  {:>10}"
 

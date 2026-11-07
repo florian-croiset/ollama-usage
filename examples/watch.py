@@ -16,7 +16,7 @@ import sys
 import time
 from datetime import datetime
 
-from ollama_usage import AuthError, Client, OllamaUsageError, RateLimitedError
+from ollama_cloud_usage import AuthError, Client, OllamaUsageError, RateLimitedError
 
 MINIMUM_INTERVAL = 30
 
