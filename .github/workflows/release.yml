@@ -137,7 +137,7 @@ jobs:
       - name: Checksums
         working-directory: assets
         run: sha256sum * > SHA256SUMS
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: assets/*
       - name: Release notes from the changelog
