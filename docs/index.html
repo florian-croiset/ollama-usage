@@ -127,7 +127,7 @@
     <pre class="wrap"><code><span class="prompt">$ </span>export OLLAMA_API_KEY=your_key
 <span class="comment"># PowerShell: $env:OLLAMA_API_KEY = "your_key"</span>
 <span class="prompt">$ </span>ollama-usage</code></pre>
-    <p>Since 2026-10-07 the API reports your spend but no longer the usage percentage: ollama-usage then completes it from the settings page when it finds a session cookie. No API key? Log in to ollama.com with Firefox and the session cookie is read automatically. With another browser, copy the <code>__Secure-session</code> cookie and pass it with <code>--cookie</code> or <code>OLLAMA_BROWSER_COOKIE</code> (Chromium-based browsers are not read automatically).</p>
+    <p>The key alone gives the quota, its reset date, the credits balance and the spend per model (official <code>/api/balance</code> and <code>/api/usage</code> endpoints). No API key? Log in to ollama.com with Firefox and the session cookie is read automatically. With another browser, copy the <code>__Secure-session</code> cookie and pass it with <code>--cookie</code> or <code>OLLAMA_BROWSER_COOKIE</code> (Chromium-based browsers are not read automatically).</p>
     <p>Desktop notifications need an extra:</p>
     <pre class="wrap"><code><span class="prompt">$ </span>pip install "ollama-usage[notify] @ git+https://github.com/florian-croiset/ollama-usage"</code></pre>
   </section>
@@ -135,12 +135,13 @@
   <section>
     <h2>Example output</h2>
     <pre><code><span class="prompt">$ </span>ollama-usage
-Monthly : <span class="ok">18.4%</span> used — reset at 2026-10-01T00:00:00Z
-    deepseek-v3.1:671b       112 req  ( 61.0%)
-    gpt-oss:120b              64 req  ( 35.0%)
-    web search                21 req  (  4.0%)
-Credits : $5.00</code></pre>
-    <p>The quota, plan, reset date, share per model and credits balance come from the session cookie. An API key adds your spend over the last 7 days.</p>
+Monthly : <span class="ok">18.4%</span> used — reset at 2026-05-15T08:30:00.123456Z
+    deepseek-v3.1:671b      1120 req  ( 54.1%)  $0.65
+    gpt-oss:120b             640 req  ( 31.2%)  $0.37
+    glm-4.6                  210 req  ( 14.7%)  $0.18
+Credits : $5.00
+Spend   : $1.20 (30d)</code></pre>
+    <p>With an API key the quota and its reset date come from <code>/api/balance</code>, the models and spend over the last 30 days from <code>/api/usage</code>. The plan name comes from <code>/api/me</code>, fetched once and cached. The session cookie gives the same quota without a reset date: the dashboard no longer shows it.</p>
   </section>
 
   <section>
@@ -157,12 +158,12 @@ Credits : $5.00</code></pre>
       <dt>Python library</dt>
       <dd><code>get_usage_api(key)</code> and <code>get_usage(cookie)</code> return a plain dict.</dd>
       <dt>Minimal requirements</dt>
-      <dd>Python 3.9+, no required dependencies. Windows, macOS and Linux.</dd>
+      <dd>Python 3.10+, no required dependencies. Windows, macOS and Linux.</dd>
     </dl>
   </section>
 
   <footer>
-    <p>Full documentation in the <a href="https://github.com/florian-croiset/ollama-usage#readme">README</a>. Uses an undocumented Ollama endpoint and scrapes ollama.com/settings; either may change.</p>
+    <p>Full documentation in the <a href="https://github.com/florian-croiset/ollama-usage#readme">README</a>. Uses an undocumented Ollama endpoint and scrapes ollama.com/dashboard and ollama.com/settings; either may change.</p>
     <p><a href="https://github.com/florian-croiset/ollama-usage/blob/main/LICENSE">MIT License</a>. Not affiliated with Ollama.</p>
   </footer>
 </main>

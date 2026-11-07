@@ -10,8 +10,7 @@ import platform
 import shutil
 import sqlite3
 import tempfile
-from collections.abc import Generator
-from typing import Callable
+from collections.abc import Callable, Generator
 
 from ollama_usage.exceptions import (
     BrowserNotFoundError,

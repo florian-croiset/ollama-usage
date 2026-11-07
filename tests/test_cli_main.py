@@ -304,6 +304,13 @@ class TestWidgetFlag:
         assert launch.call_args.kwargs["api_key"] == "sk"
         assert launch.call_args.kwargs["cookie"] is None
 
+    @pytest.mark.parametrize("given,expected", [("5", 15), ("10", 15), ("15", 15), ("60", 60)])
+    def test_api_key_raises_minimum_interval(self, given: str, expected: int) -> None:
+        # 2 API calls per refresh and a limit of 10 calls per minute
+        with patch("ollama_usage.widget.launch_widget") as launch:
+            run(["--api-key", "sk", "--widget", "--interval", given])
+        assert launch.call_args.kwargs["interval"] == expected
+
     def test_widget_skips_watch_and_alert(self) -> None:
         with patch("ollama_usage.widget.launch_widget"):
             mocks = run(["--cookie", "c", "--widget", "--watch", "--alert", "1"])

@@ -70,6 +70,7 @@ _BAR_H     = 8
 _PAD       = 14
 _FONT      = "Helvetica"
 _MAX_MODELS = 3           # per period
+_SPEND_SPANS = {"last_4_weeks": "4w", "current_month": "month"}  # spend period → short label
 
 
 def _pct_color(pct: float, theme: dict) -> str:
@@ -354,7 +355,7 @@ class OllamaWidget:
             c.create_rectangle(bar_x, y, bar_x + bw, y + bh,
                                 fill=t["bar_bg"], outline="", width=0)
             total_fill_w = int(bw * min(pct, 100.0) / 100.0)
-            # share_pct is only available from the settings page
+            # share_pct is only available from the web pages (cookie)
             has_shares = all(m.get("share_pct") is not None for m in models)
             if models and has_shares and total_fill_w > 0:
                 x_cursor = bar_x
@@ -394,7 +395,9 @@ class OllamaWidget:
         if self._data.get("credits_balance") is not None:
             extras.append(f"credits ${self._data['credits_balance']:.2f}")
         if self._data.get("spend"):
-            extras.append(f"spend ${self._data['spend']['cost_usd']:.2f} (4w)")
+            spend = self._data["spend"]
+            span = _SPEND_SPANS.get(spend.get("period"), spend.get("period") or "")
+            extras.append(f"spend ${spend['cost_usd']:.2f}" + (f" ({span})" if span else ""))
         if extras and y + 12 <= h:
             c.create_text(bar_x, y, text="  ·  ".join(extras),
                           anchor="nw", fill=t["sub"], font=(_FONT, 8))
@@ -416,8 +419,9 @@ def launch_widget(
     Launch the always-on-top Ollama quota widget.
 
     Args:
-        cookie:   __Secure-session cookie value (scrapes ollama.com/settings).
-        api_key:  ollama.com API key (official /api/usage) — takes precedence over cookie.
+        cookie:   __Secure-session cookie value (scrapes ollama.com/dashboard).
+        api_key:  ollama.com API key (official /api/balance and /api/usage) — takes
+                  precedence over cookie.
         interval: Refresh interval in seconds (min 10).
         theme:    "dark" | "light" | "minimal".
         size:     "full" (bars + models + countdown) | "compact" (text only).

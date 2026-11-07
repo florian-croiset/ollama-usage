@@ -190,6 +190,15 @@ class TestFmtModelLine:
         line = _fmt_model_line("m:1b", 3, 42.0)
         assert "42.0" in line
 
+    def test_cost_in_line(self) -> None:
+        from ollama_usage.cli import _fmt_model_line
+        line = _fmt_model_line("m:1b", 3, 42.0, 0.9)
+        assert line.endswith("( 42.0%)  $0.90")
+
+    def test_no_share_no_cost(self) -> None:
+        from ollama_usage.cli import _fmt_model_line
+        assert _fmt_model_line("m:1b", 3, None).endswith("3 req")
+
 
 class TestArgValidation:
 
