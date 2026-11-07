@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ollama-usage: check your Ollama Cloud quota</title>
-<meta name="description" content="Check your Ollama Cloud usage quota from the terminal, from Python, or in a small desktop widget.">
+<title>ollama-usage: your Ollama Cloud quota</title>
+<meta name="description" content="Your Ollama Cloud quota, credits and per-model usage from the official API: in the terminal, in Python, in Rust or as JSON.">
 <link rel="canonical" href="https://florian-croiset.github.io/ollama-usage/">
 <meta property="og:title" content="ollama-usage">
-<meta property="og:description" content="Check your Ollama Cloud usage quota from the terminal, from Python, or in a small desktop widget.">
+<meta property="og:description" content="Your Ollama Cloud quota, credits and per-model usage from the official API: in the terminal, in Python, in Rust or as JSON.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://florian-croiset.github.io/ollama-usage/">
 <link rel="icon" href="data:,">
@@ -109,9 +109,10 @@
 <main>
   <header>
     <h1>ollama-usage</h1>
-    <p class="lead">Check your Ollama Cloud usage quota from the terminal, from Python, or in a small desktop widget.</p>
+    <p class="lead">Your Ollama Cloud quota, credits and per-model usage, from the official API: in the terminal, in Python, in Rust or as JSON.</p>
     <nav>
       <a href="https://github.com/florian-croiset/ollama-usage">GitHub</a>
+      <a href="https://github.com/florian-croiset/ollama-usage/releases">Releases</a>
       <a href="https://github.com/florian-croiset/ollama-usage/blob/main/CHANGELOG.md">Changelog</a>
       <a href="https://github.com/florian-croiset/ollama-usage/issues">Issues</a>
     </nav>
@@ -123,47 +124,44 @@
       <pre><code><span class="prompt">$ </span><span id="install">pip install git+https://github.com/florian-croiset/ollama-usage</span></code></pre>
       <button type="button" data-copy="install">Copy</button>
     </div>
+    <p>This installs the Python package and the <code>ollama-usage</code> command, and compiles them, which needs <a href="https://rustup.rs">Rust</a>. Each <a href="https://github.com/florian-croiset/ollama-usage/releases">release</a> also provides prebuilt wheels and standalone binaries that need nothing else.</p>
     <p>Create an API key at <a href="https://ollama.com/settings/keys">ollama.com/settings/keys</a>, then:</p>
     <pre class="wrap"><code><span class="prompt">$ </span>export OLLAMA_API_KEY=your_key
 <span class="comment"># PowerShell: $env:OLLAMA_API_KEY = "your_key"</span>
 <span class="prompt">$ </span>ollama-usage</code></pre>
-    <p>The key alone gives the quota, its reset date, the credits balance and the spend per model (official <code>/api/balance</code> and <code>/api/usage</code> endpoints). No API key? Log in to ollama.com with Firefox and the session cookie is read automatically. With another browser, copy the <code>__Secure-session</code> cookie and pass it with <code>--cookie</code> or <code>OLLAMA_BROWSER_COOKIE</code> (Chromium-based browsers are not read automatically).</p>
-    <p>Desktop notifications need an extra:</p>
-    <pre class="wrap"><code><span class="prompt">$ </span>pip install "ollama-usage[notify] @ git+https://github.com/florian-croiset/ollama-usage"</code></pre>
   </section>
 
   <section>
     <h2>Example output</h2>
     <pre><code><span class="prompt">$ </span>ollama-usage
-Monthly : <span class="ok">18.4%</span> used — reset at 2026-05-15T08:30:00.123456Z
-    deepseek-v3.1:671b      1120 req  ( 54.1%)  $0.65
-    gpt-oss:120b             640 req  ( 31.2%)  $0.37
-    glm-4.6                  210 req  ( 14.7%)  $0.18
-Credits : $5.00
-Spend   : $1.20 (30d)</code></pre>
-    <p>With an API key the quota and its reset date come from <code>/api/balance</code>, the models and spend over the last 30 days from <code>/api/usage</code>. The plan name comes from <code>/api/me</code>, fetched once and cached. The session cookie gives the same quota without a reset date: the dashboard no longer shows it.</p>
+Plan     free
+Monthly  [<span class="ok">███░░░░░░░░░░░░░░░░░</span>]   <span class="ok">12.5%</span>   resets in 21d 12h
+Credits  included $0.63 of $5.00 spent this cycle  ·  purchased $0.00 left
+Usage    last 30 days  ·  120 req  ·  $0.80
+           model-a       60 req  $0.40   50.0%
+           model-b       40 req  $0.30   37.5%
+           other models  20 req  $0.10   12.5%</code></pre>
+    <p>The quota windows and credits come from <code>/api/balance</code>, and the requests, cost and tokens per model from <code>/api/usage</code>, both documented by Ollama. The plan name comes from <code>/api/me</code>, of which only the plan is read.</p>
   </section>
 
   <section>
     <h2>Features</h2>
     <dl>
       <dt>Every plan</dt>
-      <dd>Free, Pro, Max and Team monthly credits, and legacy session / weekly limits.</dd>
+      <dd>Monthly included credits on current plans, session and weekly windows on plans from before the 2026-08-31 pricing change, and purchased credits.</dd>
+      <dt>Per-model usage</dt>
+      <dd>Requests, cost and tokens over the last 24 hours, 7 days or 30 days with <code>--range</code>.</dd>
       <dt>Scripting</dt>
-      <dd><code>--json</code>, <code>--watch --interval 60</code>, and <code>--quiet --alert 80</code> (exit code 1 above 80%).</dd>
-      <dt>Notifications</dt>
-      <dd><code>--notify</code> (needs the <code>notify</code> extra) warns once when a quota crosses <code>--notify-threshold</code>.</dd>
-      <dt>Widget</dt>
-      <dd><code>--widget</code> opens an always-on-top window with usage and reset countdown (needs tkinter).</dd>
-      <dt>Python library</dt>
-      <dd><code>get_usage_api(key)</code> and <code>get_usage(cookie)</code> return a plain dict.</dd>
-      <dt>Minimal requirements</dt>
-      <dd>Python 3.10+, no required dependencies. Windows, macOS and Linux.</dd>
+      <dd><code>--json</code> follows a versioned schema; <code>--quiet --alert 80</code> exits with 1 at 80&nbsp;%, and every other outcome has its own exit code.</dd>
+      <dt>Python and Rust</dt>
+      <dd><code>Client(key).fetch()</code> returns typed, read-only objects; the Rust crate is the same core.</dd>
+      <dt>Careful with your key</dt>
+      <dd>Sent only to ollama.com, never logged, nothing written to disk, no telemetry.</dd>
     </dl>
   </section>
 
   <footer>
-    <p>Full documentation in the <a href="https://github.com/florian-croiset/ollama-usage#readme">README</a>. Uses an undocumented Ollama endpoint and scrapes ollama.com/dashboard and ollama.com/settings; either may change.</p>
+    <p>Full documentation in the <a href="https://github.com/florian-croiset/ollama-usage#readme">README</a>. Coming from 0.x? Read the <a href="https://github.com/florian-croiset/ollama-usage/blob/main/MIGRATING.md">migration guide</a>.</p>
     <p><a href="https://github.com/florian-croiset/ollama-usage/blob/main/LICENSE">MIT License</a>. Not affiliated with Ollama.</p>
   </footer>
 </main>

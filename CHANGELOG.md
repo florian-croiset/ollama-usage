@@ -7,6 +7,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+Version 1.0 is a rewrite on a Rust core shared by the command and the Python
+package. See [MIGRATING.md](MIGRATING.md) for every change from 0.3.
+
+### Added
+- A versioned JSON report, [schema 1.0](schemas/usage-report-1.0.json), shared by
+  `--json`, the Python package and the Rust crate. Fields are only added within 1.x
+- Input, cached input and output tokens, in total and per model, and the models
+  beyond the first ten combined in `usage.other`
+- `--range 24h|7d|30d` (Python: `fetch(range)`) for the usage period
+- The included credits of the current period: balance, allowance and amount spent
+- The start of the monthly period
+- A configuration file holding the API key, and `--config PATH`
+- Partial reports: when only one of `/api/balance` and `/api/usage` answers, the
+  report carries what it got and `warnings` says what is missing (exit code 2)
+- Distinct exit codes for a partial report, a failed fetch, a missing or rejected
+  key and invalid arguments
+- `RateLimitedError` with the delay ollama.com asked for
+- `FORCE_COLOR` forces colours
+- A Rust crate, `ollama-usage`
+- Python examples in `examples/`: quota, usage per model, an alert on usage or
+  credits, and polling
+
+### Changed
+- The Python API is a client returning read-only dataclasses:
+  `Client(key).fetch()` replaces `get_usage_api(key)`, `report.windows.items()`
+  replaces `iter_periods()`, and `ApiError` replaces `ParseError`
+- `--alert PCT` fires at `PCT` percent, not only above it
+- The text output shows one line per window with a bar and the time left before
+  the reset
+- Installing from the repository compiles Rust; releases provide prebuilt wheels
+  and standalone binaries
+
+### Removed
+- Page scraping and the session cookie: `--cookie`, `--browser`,
+  `OLLAMA_BROWSER_COOKIE`, Firefox cookie detection, `get_usage(cookie)` and
+  `get_usage_with_fallback()`
+- `--watch`, `--notify` and the desktop widget
+- The `notify` extra, `models[].color` and the `source` field
+
 
 ## [0.3.0] - 2026-11-07
 

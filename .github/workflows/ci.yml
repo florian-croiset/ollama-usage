@@ -4,42 +4,92 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  lint:
-    name: Lint & Security
+  rust:
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Documentation
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps --package ollama-usage --locked
+
+  schema:
+    name: Schema
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
-      - name: Install lint tools
-        run: pip install ruff==0.16.7 bandit==1.9.4
-      - name: Ruff
-        run: ruff check ollama_usage/
-      - name: Bandit
-        # B310: urlopen on a hardcoded https:// URL
-        # B110: intentional except-pass in the Tkinter widget
-        run: bandit -r ollama_usage/ --skip B310,B110
+          python-version: "3.13"
+      - run: pip install jsonschema
+      - name: Reference reports match the schema
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
 
-  test:
-    name: Tests (Python ${{ matrix.python-version }})
+          schema = json.loads(Path("schemas/usage-report-1.0.json").read_text())
+          Draft202012Validator.check_schema(schema)
+          validator = Draft202012Validator(schema)
+          for report in sorted(Path("fixtures/reports").glob("*.json")):
+              validator.validate(json.loads(report.read_text()))
+              print(f"{report} is valid")
+
+  python:
+    name: Python ${{ matrix.python }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python: ["3.10", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install
-        run: pip install -e ".[dev]"
-      - name: Test with coverage
-        run: pytest tests/ --cov=ollama_usage --cov-report=term-missing
+          python-version: ${{ matrix.python }}
+      - name: Build and install
+        run: |
+          python -m venv .venv
+          echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/pip install maturin pyright ruff
+          VIRTUAL_ENV="$PWD/.venv" .venv/bin/maturin develop
+      - name: Lint
+        run: |
+          ruff check python examples
+          ruff format --check python examples
+          pyright
+      - name: Test
+        run: python -m unittest discover -s python/tests -v

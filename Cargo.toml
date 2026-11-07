@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/ollama-usage", "crates/ollama-usage-cli", "crates/ollama-usage-py"]
+
+[workspace.package]
+version = "1.0.0-alpha.1"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/florian-croiset/ollama-usage"
+homepage = "https://github.com/florian-croiset/ollama-usage"
+authors = ["Florian Croiset"]
+
+[workspace.dependencies]
+ollama-usage = { path = "crates/ollama-usage", version = "1.0.0-alpha.1" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+time = { version = "0.3.55", features = ["formatting", "macros", "parsing", "serde"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

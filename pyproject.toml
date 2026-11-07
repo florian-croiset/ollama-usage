@@ -1,47 +1,58 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
 
 [project]
 name = "ollama-usage"
-version = "0.3.0"
-description = "CLI and Python library to check your Ollama Cloud quota usage"
+description = "Read your Ollama Cloud quota, credits and per-model usage from the official API."
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
-authors = [
-    { name = "ollama-usage contributors" }
-]
-keywords = ["ollama", "quota", "usage", "cli", "llm"]
+authors = [{ name = "Florian Croiset" }]
+keywords = ["ollama", "quota", "usage", "llm", "api"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Rust",
     "Topic :: Utilities",
+    "Typing :: Typed",
 ]
-dependencies = []
+dynamic = ["version"]
 
-[project.optional-dependencies]
-notify = ["plyer"]
-dev    = ["pytest", "pytest-cov", "plyer"]
+[project.scripts]
+ollama-usage = "ollama_usage._cli:main"
 
 [project.urls]
 Homepage = "https://github.com/florian-croiset/ollama-usage"
 Repository = "https://github.com/florian-croiset/ollama-usage"
-"Bug Tracker" = "https://github.com/florian-croiset/ollama-usage/issues"
+Issues = "https://github.com/florian-croiset/ollama-usage/issues"
 Changelog = "https://github.com/florian-croiset/ollama-usage/blob/main/CHANGELOG.md"
 
-[project.scripts]
-ollama-usage = "ollama_usage.cli:main"
+[tool.maturin]
+manifest-path = "crates/ollama-usage-py/Cargo.toml"
+python-source = "python"
+module-name = "ollama_usage._ollama_usage"
+features = ["extension-module"]
 
-[tool.setuptools]
-packages = ["ollama_usage"]
+[tool.pyright]
+include = ["python/ollama_usage", "examples"]
+typeCheckingMode = "strict"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "D"]
+ignore = ["D105", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"python/tests/*" = ["D"]
+"examples/*" = ["D103"]

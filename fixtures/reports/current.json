@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "fetched_at": "2026-01-10T12:00:00Z",
+  "plan": "free",
+  "windows": {
+    "monthly": {
+      "used_pct": 12.5,
+      "starts_at": "2026-01-01T00:00:00Z",
+      "resets_at": "2026-02-01T00:00:00Z"
+    },
+    "session": null,
+    "weekly": null
+  },
+  "credits": {
+    "included": {
+      "balance_usd": 4.375,
+      "allowance_usd": 5.0,
+      "spent_usd": 0.625
+    },
+    "purchased_balance_usd": 0.0
+  },
+  "usage": {
+    "range": "30d",
+    "from": "2025-12-11T00:00:00Z",
+    "until": "2026-01-10T12:00:00Z",
+    "requests": 120,
+    "cost_usd": 0.8,
+    "input_tokens": 50000,
+    "cached_input_tokens": 10000,
+    "output_tokens": 20000,
+    "models": [
+      {
+        "model": "model-a",
+        "requests": 60,
+        "cost_usd": 0.4,
+        "input_tokens": 25000,
+        "cached_input_tokens": 5000,
+        "output_tokens": 10000,
+        "share_pct": 50.0
+      },
+      {
+        "model": "model-b",
+        "requests": 40,
+        "cost_usd": 0.3,
+        "input_tokens": 20000,
+        "cached_input_tokens": 4000,
+        "output_tokens": 8000,
+        "share_pct": 37.5
+      }
+    ],
+    "other": {
+      "requests": 20,
+      "cost_usd": 0.1,
+      "input_tokens": 5000,
+      "cached_input_tokens": 1000,
+      "output_tokens": 2000,
+      "share_pct": 12.5
+    }
+  },
+  "warnings": []
+}
