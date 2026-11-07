@@ -44,6 +44,8 @@ def main() -> int:
         if window.used_pct >= args.percent:
             notify(f"{name} usage at {window.used_pct:.1f}%")
             reached = True
+    # None on plans from before the pricing change, which have no included
+    # credits, and when /api/balance did not answer.
     included = report.credits.included if report.credits else None
     if included and included.balance_usd <= args.credits:
         notify(f"${included.balance_usd:.2f} of included credits left")

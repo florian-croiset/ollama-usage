@@ -26,16 +26,20 @@ def main() -> int:
     if not key.strip():
         print("Set OLLAMA_API_KEY to a key from https://ollama.com/settings/keys", file=sys.stderr)
         return 1
+    # The range ends now and is not the quota period: what this period cost is
+    # report.credits.included.spent_usd.
     try:
         usage = Client(key).fetch(args.range).usage
     except OllamaUsageError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+    # None when /api/usage did not answer but /api/balance did.
     if usage is None:
         print("error: /api/usage did not answer", file=sys.stderr)
         return 1
 
     rows: list[tuple[str, ModelUsage | OtherUsage]] = [(m.model, m) for m in usage.models]
+    # The API lists up to ten models and combines the rest in usage.other.
     if usage.other:
         rows.append(("(other models)", usage.other))
     rows.sort(key=lambda row: row[1].cost_usd, reverse=True)
