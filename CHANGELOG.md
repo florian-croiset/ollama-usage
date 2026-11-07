@@ -7,11 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+
+## [1.0.0-alpha.1] - 2026-11-07
+
 Version 1.0 is a rewrite on a Rust core shared by the command and the Python
-package. See [MIGRATING.md](MIGRATING.md) for every change from 0.3.
+package. See [MIGRATING.md](https://github.com/florian-croiset/ollama-usage/blob/main/MIGRATING.md) for every change from 0.3.
 
 ### Added
-- A versioned JSON report, [schema 1.0](schemas/usage-report-1.0.json), shared by
+- A versioned JSON report, [schema 1.0](https://github.com/florian-croiset/ollama-usage/blob/main/schemas/usage-report-1.0.json), shared by
   `--json`, the Python package and the Rust crate. Fields are only added within 1.x
 - Input, cached input and output tokens, in total and per model, and the models
   beyond the first ten combined in `usage.other`
