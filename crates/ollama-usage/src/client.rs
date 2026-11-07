@@ -58,7 +58,8 @@ impl Client {
     ///
     /// # Errors
     ///
-    /// - [`Error::Auth`] if the key is rejected.
+    /// - [`Error::Auth`] if the key is rejected, or cannot be sent because it is
+    ///   empty or holds a character other than printable ASCII.
     /// - [`Error::RateLimited`] if ollama.com rate-limits `/api/balance`.
     /// - [`Error::Network`] or [`Error::Api`] if both `/api/balance` and
     ///   `/api/usage` fail.
@@ -70,6 +71,7 @@ impl Client {
     }
 
     fn fetch_at(&self, range: Range, now: OffsetDateTime, clock: Instant) -> Result<Report, Error> {
+        check_key(&self.api_key)?;
         let balance = self
             .get(&format!("{BASE_URL}/api/balance"))
             .and_then(|body| parse::balance(&body));
@@ -181,6 +183,23 @@ impl fmt::Debug for Client {
         f.debug_struct("Client")
             .field("api_key", &"<redacted>")
             .finish_non_exhaustive()
+    }
+}
+
+/// Rejects a key that could not be sent in a header, which would otherwise
+/// surface as a confusing network error. Copied keys sometimes carry an
+/// invisible character, such as a byte order mark.
+fn check_key(key: &str) -> Result<(), Error> {
+    if key.is_empty() {
+        return Err(Error::Auth("the API key is empty".to_owned()));
+    }
+    match key.chars().find(|c| !c.is_ascii_graphic()) {
+        Some(c) => Err(Error::Auth(format!(
+            "the API key contains the character {}, which a key cannot hold; \
+             check for an invisible character copied with it",
+            c.escape_unicode()
+        ))),
+        None => Ok(()),
     }
 }
 
@@ -426,6 +445,26 @@ mod tests {
             .fetch_at(Range::Days30, NOW, start + Duration::from_hours(1))
             .unwrap();
         assert_eq!(after_an_hour.plan.as_deref(), Some("free"));
+    }
+
+    #[test]
+    fn a_key_that_cannot_be_sent_is_refused_before_any_request() {
+        for key in ["\u{feff}test-key", "test key", "test-key\n", ""] {
+            let api = healthy();
+            let client = Client::with_transport(key, Box::new(api.clone()));
+            let error = client
+                .fetch_at(Range::Days30, NOW, Instant::now())
+                .unwrap_err();
+            assert!(matches!(error, Error::Auth(_)), "{key:?}: {error:?}");
+            assert_eq!(api.requests(), Vec::<String>::new(), "{key:?}");
+        }
+    }
+
+    #[test]
+    fn the_refusal_names_the_character_but_not_the_key() {
+        let message = check_key("\u{feff}secret").unwrap_err().to_string();
+        assert!(message.contains(r"\u{feff}"), "{message}");
+        assert!(!message.contains("secret"), "{message}");
     }
 
     #[test]
