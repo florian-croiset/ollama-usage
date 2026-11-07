@@ -3,7 +3,7 @@
 > Programmatic access to your [Ollama Cloud](https://ollama.com) usage quota — CLI, Python library, notifications and desktop widget.
 
 ![CI](https://github.com/florian-croiset/ollama-usage/actions/workflows/ci.yml/badge.svg)
-![Python](https://img.shields.io/badge/python-3.9+-blue)
+![Python](https://img.shields.io/badge/python-3.10+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Two data sources are supported:

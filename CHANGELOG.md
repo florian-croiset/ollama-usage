@@ -39,6 +39,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (`month`, `4w`, `30d`)
 
 ### Changed
+- Python 3.10 or later is required: Python 3.9 is no longer maintained and no longer
+  available on the CI runners
 - `plan` comes from the dashboard meter label ("Free usage" → `"free"`, "Pro usage" →
   `"pro"`...), as the API reports it — not from the "Pay as you go" billing badge
 - `get_usage_with_fallback` keeps the API spend, and uses the month's spend from the web
