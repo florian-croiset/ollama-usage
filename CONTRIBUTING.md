@@ -91,7 +91,8 @@ A scope may follow, e.g. `fix(cli): …` or `feat(python): …`.
    `git tag vX.Y.Z && git push origin vX.Y.Z`.
 4. The *Release* workflow builds the command for Linux, macOS and Windows and the
    Python wheels, and drafts a GitHub Release with them, their checksums and the
-   changelog section. Review the draft, then publish it.
+   changelog section, its wrapped lines joined since a release page shows every
+   line break. Review the draft, then publish it.
 
 Running the *Release* workflow by hand from the Actions tab builds everything
 without releasing, which is a way to try the builds before tagging.
