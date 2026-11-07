@@ -144,15 +144,7 @@ jobs:
       - name: Release notes from the changelog
         env:
           VERSION: ${{ needs.check.outputs.version }}
-        run: |
-          awk -v heading="## [$VERSION]" '
-            index($0, heading) == 1 { found = 1; next }
-            found && /^## / { exit }
-            found { print }
-          ' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then
-            echo "No changelog section for $VERSION." > notes.md
-          fi
+        run: python3 .github/scripts/release_notes.py "$VERSION" > notes.md
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
