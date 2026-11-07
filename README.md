@@ -34,18 +34,26 @@ is read. Coming from 0.x? See [MIGRATING.md](MIGRATING.md).
 
 ## Installation
 
-**Python package**, which also installs the `ollama-usage` command:
+**Python package**, which also installs the `ollama-usage` command. Prebuilt
+for Python 3.10 and later on Linux, macOS and Windows, from the latest
+[release](https://github.com/florian-croiset/ollama-usage/releases):
+
+```bash
+pip install --no-index --find-links https://github.com/florian-croiset/ollama-usage/releases/expanded_assets/v1.0.0-alpha.1 ollama-usage==1.0.0a1
+```
+
+`--no-index` matters: another project, unrelated to this one, is published on
+PyPI as `ollama-usage`, and without it pip would install that one instead.
+
+Or from the repository, which compiles the package and so needs a Rust toolchain
+([rustup](https://rustup.rs)):
 
 ```bash
 pip install git+https://github.com/florian-croiset/ollama-usage
 ```
 
-This compiles the package, so it needs a Rust toolchain
-([rustup](https://rustup.rs)). Each [release](https://github.com/florian-croiset/ollama-usage/releases)
-also provides prebuilt wheels for Python 3.10 and later, and standalone binaries
-of the command, which need nothing else.
-
-**Command only**, with Cargo:
+**Command only**: each release has a standalone archive for Linux, macOS and
+Windows that needs nothing else. Or with Cargo:
 
 ```bash
 cargo install --git https://github.com/florian-croiset/ollama-usage ollama-usage-cli
