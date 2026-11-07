@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/florian-croiset/ollama-usage/blob/main/schemas/usage-report-1.0.json",
+  "title": "ollama-usage report",
+  "description": "What ollama-usage reports about an Ollama Cloud account. Versions 1.x only add fields.",
+  "type": "object",
+  "required": ["schema_version", "fetched_at", "plan", "windows", "credits", "usage", "warnings"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "fetched_at": { "$ref": "#/$defs/timestamp" },
+    "plan": {
+      "description": "Plan name in lower case, from the undocumented /api/me.",
+      "type": ["string", "null"]
+    },
+    "windows": {
+      "type": "object",
+      "required": ["monthly", "session", "weekly"],
+      "properties": {
+        "monthly": { "$ref": "#/$defs/nullableWindow" },
+        "session": { "$ref": "#/$defs/nullableWindow" },
+        "weekly": { "$ref": "#/$defs/nullableWindow" }
+      }
+    },
+    "credits": {
+      "description": "Null when /api/balance failed.",
+      "type": ["object", "null"],
+      "required": ["included", "purchased_balance_usd"],
+      "properties": {
+        "included": {
+          "type": ["object", "null"],
+          "required": ["balance_usd", "allowance_usd", "spent_usd"],
+          "properties": {
+            "balance_usd": { "$ref": "#/$defs/usd" },
+            "allowance_usd": { "$ref": "#/$defs/usd" },
+            "spent_usd": { "type": "number" }
+          }
+        },
+        "purchased_balance_usd": { "type": ["number", "null"] }
+      }
+    },
+    "usage": {
+      "description": "Null when /api/usage failed.",
+      "type": ["object", "null"],
+      "allOf": [{ "$ref": "#/$defs/metrics" }],
+      "required": ["range", "from", "until", "models", "other"],
+      "properties": {
+        "range": { "enum": ["24h", "7d", "30d"] },
+        "from": { "$ref": "#/$defs/nullableTimestamp" },
+        "until": { "$ref": "#/$defs/nullableTimestamp" },
+        "models": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "allOf": [{ "$ref": "#/$defs/metrics" }],
+            "required": ["model", "share_pct"],
+            "properties": {
+              "model": { "type": "string" },
+              "share_pct": { "$ref": "#/$defs/percent" }
+            }
+          }
+        },
+        "other": {
+          "type": ["object", "null"],
+          "allOf": [{ "$ref": "#/$defs/metrics" }],
+          "required": ["share_pct"],
+          "properties": { "share_pct": { "$ref": "#/$defs/percent" } }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "description": "Stable identifier. Later 1.x versions may add codes.",
+            "type": "string",
+            "examples": [
+              "balance_unavailable",
+              "usage_unavailable",
+              "plan_unavailable",
+              "monthly_allowance_missing",
+              "no_quota_window"
+            ]
+          },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "nullableTimestamp": { "type": ["string", "null"], "format": "date-time" },
+    "usd": { "type": "number", "minimum": 0 },
+    "percent": { "type": "number", "minimum": 0, "maximum": 100 },
+    "count": { "type": "integer", "minimum": 0 },
+    "nullableWindow": {
+      "type": ["object", "null"],
+      "required": ["used_pct", "starts_at", "resets_at"],
+      "properties": {
+        "used_pct": { "type": "number" },
+        "starts_at": { "$ref": "#/$defs/nullableTimestamp" },
+        "resets_at": { "$ref": "#/$defs/nullableTimestamp" }
+      }
+    },
+    "metrics": {
+      "required": ["requests", "cost_usd", "input_tokens", "cached_input_tokens", "output_tokens"],
+      "properties": {
+        "requests": { "$ref": "#/$defs/count" },
+        "cost_usd": { "$ref": "#/$defs/usd" },
+        "input_tokens": { "$ref": "#/$defs/count" },
+        "cached_input_tokens": { "$ref": "#/$defs/count" },
+        "output_tokens": { "$ref": "#/$defs/count" }
+      }
+    }
+  }
+}
