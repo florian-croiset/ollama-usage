@@ -1,66 +1,23 @@
-# Python bytecode
+# Rust
+/target/
+
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Packaging / build
-build/
-dist/
-sdist/
-wheels/
+*.so
+*.pyd
 *.egg-info/
-*.egg
-.eggs/
-*.whl
-pip-wheel-metadata/
-MANIFEST
-
-# Virtual environments
-.venv/
-venv/
-env/
-ENV/
-.python-version
-
-# Tests / coverage
-.pytest_cache/
-.coverage
-.coverage.*
-coverage.xml
-htmlcov/
-.tox/
-.nox/
-.hypothesis/
-.cache/
-
-# Linters / type checkers
+/dist/
+/.venv/
 .ruff_cache/
-.mypy_cache/
-.dmypy.json
-dmypy.json
-.pyre/
-.pytype/
-.pyright/
 
-# Secrets / local config
+# Secrets
 .env
 .env.*
-!.env.example
-*.txt
 
-# Editors / IDEs
+# Editors and OS
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
-
-# OS files
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# Logs / temp
-*.log
-*.tmp
-.ipynb_checkpoints/

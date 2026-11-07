@@ -1,0 +1,17 @@
+{
+  "range": "7d",
+  "scope": "self",
+  "granularity": "day",
+  "group_by": "model",
+  "from": "2026-01-03T00:00:00Z",
+  "until": "2026-01-10T12:00:00Z",
+  "totals": {
+    "request_count": 0,
+    "usage_usd": 0,
+    "input_tokens": 0,
+    "cached_input_tokens": 0,
+    "output_tokens": 0,
+    "groups": []
+  },
+  "buckets": []
+}
