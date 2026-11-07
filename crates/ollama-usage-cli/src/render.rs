@@ -89,16 +89,18 @@ fn until(now: OffsetDateTime, at: OffsetDateTime) -> String {
 }
 
 fn credits_summary(credits: &Credits) -> Option<String> {
+    // Spent rather than left, like the window's percentage, and "this cycle" so
+    // that it is not compared with the usage line, which covers another period.
     let included = credits.included.as_ref().map(|included| {
         format!(
-            "included {} / {}",
-            money(included.balance_usd),
+            "included {} of {} spent this cycle",
+            money(included.spent_usd),
             money(included.allowance_usd)
         )
     });
     let purchased = credits
         .purchased_balance_usd
-        .map(|balance| format!("purchased {}", money(balance)));
+        .map(|balance| format!("purchased {} left", money(balance)));
     match (included, purchased) {
         (Some(included), Some(purchased)) => Some(format!("{included}  ·  {purchased}")),
         (one, other) => one.or(other),
@@ -164,10 +166,11 @@ fn usage_lines(out: &mut String, usage: &Usage) {
 }
 
 /// Dollars with cents, or with up to five decimals for amounts below a cent so
-/// that a single cheap request does not read as free.
+/// that a single cheap request does not read as free. Half a cent rounds up, as
+/// with money, where formatting alone would round it to even.
 fn money(usd: f64) -> String {
     if usd.abs() >= 0.01 || usd.abs() < 1e-9 {
-        return format!("${usd:.2}");
+        return format!("${:.2}", (usd * 100.0).round() / 100.0);
     }
     let digits = format!("{usd:.5}");
     format!("${}", digits.trim_end_matches('0'))
@@ -199,7 +202,7 @@ mod tests {
             "\
 Plan     free
 Monthly  [███░░░░░░░░░░░░░░░░░]   12.5%   resets in 21d 12h
-Credits  included $4.38 / $5.00  ·  purchased $0.00
+Credits  included $0.63 of $5.00 spent this cycle  ·  purchased $0.00 left
 Usage    last 30 days  ·  120 req  ·  $0.80
            model-a       60 req  $0.40   50.0%
            model-b       40 req  $0.30   37.5%
@@ -218,7 +221,7 @@ Usage    last 30 days  ·  120 req  ·  $0.80
                 "Plan     pro",
                 "Session  [███░░░░░░░░░░░░░░░░░]   12.5%   resets in 3h 0m",
                 "Weekly   [████████░░░░░░░░░░░░]   40.0%   resets in 1d 12h",
-                "Credits  purchased $2.50",
+                "Credits  purchased $2.50 left",
             ]
         );
     }
@@ -271,6 +274,7 @@ Usage    last 30 days  ·  120 req  ·  $0.80
         assert_eq!(money(4.375), "$4.38");
         assert_eq!(money(0.00042), "$0.00042");
         assert_eq!(money(0.0015), "$0.0015");
+        assert_eq!(money(0.625), "$0.63");
     }
 
     #[test]

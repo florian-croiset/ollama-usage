@@ -11,7 +11,7 @@
 $ ollama-usage
 Plan     free
 Monthly  [███░░░░░░░░░░░░░░░░░]   12.5%   resets in 21d 12h
-Credits  included $4.38 / $5.00  ·  purchased $0.00
+Credits  included $0.63 of $5.00 spent this cycle  ·  purchased $0.00 left
 Usage    last 30 days  ·  120 req  ·  $0.80
            model-a       60 req  $0.40   50.0%
            model-b       40 req  $0.30   37.5%
@@ -94,7 +94,7 @@ $ ollama-usage
 Plan     pro
 Session  [███░░░░░░░░░░░░░░░░░]   12.5%   resets in 3h 0m
 Weekly   [████████░░░░░░░░░░░░]   40.0%   resets in 1d 12h
-Credits  purchased $2.50
+Credits  purchased $2.50 left
 Usage    last 30 days  ·  120 req  ·  $0.80
 …
 ```
