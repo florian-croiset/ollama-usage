@@ -78,6 +78,22 @@ Commit messages start with a prefix:
 
 A scope may follow, e.g. `fix(cli): …` or `feat(python): …`.
 
+## Releasing
+
+1. Set the new version in `Cargo.toml`, both under `[workspace.package]` and for
+   `ollama-usage` under `[workspace.dependencies]`, and run `cargo check` to update
+   `Cargo.lock`. The Python package takes its version from there.
+2. In `CHANGELOG.md`, rename `## Unreleased` to `## [X.Y.Z] - YYYY-MM-DD` and open
+   a new, empty `## Unreleased` above it.
+3. Merge that change, then tag the merge commit and push the tag:
+   `git tag vX.Y.Z && git push origin vX.Y.Z`.
+4. The *Release* workflow builds the command for Linux, macOS and Windows and the
+   Python wheels, and drafts a GitHub Release with them, their checksums and the
+   changelog section. Review the draft, then publish it.
+
+Running the *Release* workflow by hand from the Actions tab builds everything
+without releasing, which is a way to try the builds before tagging.
+
 ## License
 
 By contributing, you agree that your code will be released under the
