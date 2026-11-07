@@ -86,7 +86,8 @@ A scope may follow, e.g. `fix(cli): …` or `feat(python): …`.
    `ollama-usage` under `[workspace.dependencies]`, and run `cargo check` to update
    `Cargo.lock`. The Python package takes its version from there.
 2. In `CHANGELOG.md`, rename `## Unreleased` to `## [X.Y.Z] - YYYY-MM-DD` and open
-   a new, empty `## Unreleased` above it.
+   a new, empty `## Unreleased` above it. In `README.md` and `docs/index.html`,
+   point the `pip install` line at the new tag and version.
 3. Merge that change, then tag the merge commit and push the tag:
    `git tag vX.Y.Z && git push origin vX.Y.Z`.
 4. The *Release* workflow builds the command for Linux, macOS and Windows and the

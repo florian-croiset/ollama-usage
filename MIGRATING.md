@@ -21,8 +21,13 @@ report is then partial.
 `pip install git+https://github.com/florian-croiset/ollama-usage` still installs
 the library and the `ollama-usage` command, but now compiles Rust: install a
 toolchain with [rustup](https://rustup.rs), or take a prebuilt wheel from the
-[releases](https://github.com/florian-croiset/ollama-usage/releases). Python 3.10
-or later is still required. The `notify` extra no longer exists.
+[releases](https://github.com/florian-croiset/ollama-usage/releases) as the
+[README](README.md#installation) shows. Python 3.10 or later is still required.
+The `notify` extra no longer exists.
+
+Do not run `pip install -U ollama-usage` without `--no-index`: another,
+unrelated project is published on PyPI under that name, and pip would replace
+this package with it.
 
 ## Command line
 
