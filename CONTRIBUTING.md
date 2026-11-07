@@ -1,46 +1,84 @@
 # Contributing
 
-Thank you for your interest in contributing to **ollama-usage**!
+Thank you for your interest in **ollama-usage**.
 
-## Getting started
+## Layout
+
+| Path | What it is |
+| --- | --- |
+| `crates/ollama-usage` | The Rust core: HTTP client, response parsing, the report |
+| `crates/ollama-usage-cli` | The `ollama-usage` command |
+| `crates/ollama-usage-py` | The native module of the Python package |
+| `python/ollama_usage` | The Python API, built on the report's JSON form |
+| `schemas/` | The JSON schema of the report |
+| `fixtures/api/` | API responses used by the tests |
+| `fixtures/reports/` | The reports expected from them, shared by the Rust and Python tests |
+
+## Setting up
+
+You need a stable Rust toolchain ([rustup](https://rustup.rs)) and Python 3.10 or
+later.
 
 ```bash
 git clone https://github.com/florian-croiset/ollama-usage
 cd ollama-usage
-pip install -e ".[dev]"
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install maturin ruff
+maturin develop                    # builds the extension into the virtualenv
 ```
 
-## Running the tests
+## Checks
+
+CI runs all of these; run them before opening a pull request.
 
 ```bash
-pytest
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+ruff check python && ruff format --check python
+python -m unittest discover -s python/tests
 ```
+
+Clippy runs with the pedantic lints. Allow one only at the item that needs it,
+with a reason when it is not obvious.
+
+## Tests and test data
+
+The tests never reach ollama.com: the client is tested against recorded
+responses in `fixtures/api/`.
+
+**Never commit data from a real account**, not even rounded or shifted:
+percentages, amounts, request counts, reset dates (they reveal the sign-up date),
+the models you use, names or e-mail addresses. Use obviously invented values,
+like those already in `fixtures/`. This applies to tests, documentation, commit
+messages and pull requests.
+
+When the report changes, update `fixtures/reports/` and the schema together: CI
+checks that the reference reports match it. Within 1.x the schema only gains
+fields.
 
 ## Submitting a change
 
-1. Fork the repository and create a branch from `main`.
-2. Make your changes and add tests if relevant.
-3. Make sure all tests pass.
-4. Open a pull request with a clear description of what you changed and why.
+1. Create a branch from `main`.
+2. Make the change, with tests.
+3. Add an entry under `## Unreleased` in `CHANGELOG.md` for anything users notice.
+4. Open a pull request saying what changed and why.
 
-## Commit style
-
-Use short, descriptive prefixes:
+Commit messages start with a prefix:
 
 | Prefix | Use for |
-|--------|---------|
+| --- | --- |
 | `feat:` | New feature |
 | `fix:` | Bug fix |
-| `chore:` | Maintenance (deps, config, changelog…) |
 | `docs:` | Documentation only |
 | `test:` | Tests only |
+| `ci:` | Continuous integration |
+| `chore:` | Maintenance: dependencies, configuration, releases |
 
-Example: `fix: handle None cookie when browser has no ollama.com session`
-
-## Changelog
-
-For every user-facing change, add an entry in `CHANGELOG.md` under the `## Unreleased` section (between the last release and the top of the file).
+A scope may follow, e.g. `fix(cli): …` or `feat(python): …`.
 
 ## License
 
-By contributing, you agree that your code will be released under the [MIT License](LICENSE).
+By contributing, you agree that your code will be released under the
+[MIT License](LICENSE).
