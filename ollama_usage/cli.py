@@ -24,6 +24,7 @@ from ollama_usage.notify import NotifyState, check_and_notify, notify_available
 from ollama_usage.scraper import get_usage, iter_periods
 
 logger = logging.getLogger(__name__)
+_API_MIN_INTERVAL = 15  # seconds — 2 API calls per refresh, 10 calls/minute allowed
 
 
 def _sanitize_cookie(value: str) -> str:
@@ -56,14 +57,18 @@ def _color_pct(pct: float) -> str:
     return colorize(f"{pct}%", color)
 
 
-def _fmt_model_line(model: str, requests: int, share_pct: float | None) -> str:
+def _fmt_model_line(
+    model: str, requests: int, share_pct: float | None, cost_usd: float | None = None
+) -> str:
     """Format one model breakdown line, padded for alignment."""
     max_name = 22
     name = model if len(model) <= max_name else model[: max_name - 1] + "…"
     line = f"    {name:<{max_name}}  {requests:>4} req"
-    if share_pct is None:
-        return line
-    return f"{line}  ({share_pct:5.1f}%)"
+    if share_pct is not None:
+        line += f"  ({share_pct:5.1f}%)"
+    if cost_usd is not None:
+        line += f"  ${cost_usd:.2f}"
+    return line
 
 
 def display(data: dict, as_json: bool, quiet: bool) -> None:
@@ -82,7 +87,7 @@ def display(data: dict, as_json: bool, quiet: bool) -> None:
             line += f" — reset at {period['resets_at']}"
         print(line)
         for m in period.get("models", []):
-            print(_fmt_model_line(m["model"], m["requests"], m.get("share_pct")))
+            print(_fmt_model_line(m["model"], m["requests"], m.get("share_pct"), m.get("cost_usd")))
 
     if data.get("credits_balance") is not None:
         print(f"Credits : ${data['credits_balance']:.2f}")
@@ -140,7 +145,7 @@ def main():
     parser.add_argument("--watch", action="store_true", help="Refresh continuously")
     parser.add_argument(
         "--interval", type=int, default=30,
-        help="Refresh interval in seconds (default: 30, min: 10, max: 3600, requires --watch)"
+        help="Refresh interval in seconds (default: 30, min: 10, 15 with an API key, max: 3600, requires --watch)"
     )
     parser.add_argument(
         "--alert", type=float, metavar="PCT",
@@ -239,9 +244,11 @@ def main():
                 cookie = _sanitize_cookie(get_cookie_auto())
 
         if api_key:
-            logger.debug("API key obtained (***) — using %s", "ollama.com/api/usage")
+            logger.debug("API key obtained (***) — using ollama.com/api/balance and /api/usage")
+            # Each refresh makes 2 API calls; the API allows 10 per minute per user.
+            interval = max(_API_MIN_INTERVAL, interval)
         else:
-            logger.debug("Cookie obtained (***) — scraping ollama.com/settings")
+            logger.debug("Cookie obtained (***) — scraping ollama.com/dashboard")
 
         def fetch() -> dict:
             if not api_key:
@@ -249,9 +256,9 @@ def main():
             data = get_usage_with_fallback(api_key, cookie)
             if data.get("source") == "api" and not iter_periods(data) and not args.quiet:
                 print(
-                    "Note: the API no longer reports the usage percentage (since 2026-10-07). "
-                    "Provide a session cookie (--cookie, OLLAMA_BROWSER_COOKIE or a logged-in "
-                    "browser) to see it.",
+                    "Note: the API reported no usage percentage (ollama.com/api/balance "
+                    "unavailable). Provide a session cookie (--cookie, OLLAMA_BROWSER_COOKIE "
+                    "or a logged-in browser) to read it from the dashboard instead.",
                     file=sys.stderr,
                 )
             return data

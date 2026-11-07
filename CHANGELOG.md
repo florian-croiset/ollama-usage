@@ -7,6 +7,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Fixed
+- Reading the usage with the session cookie works again after the November 2026
+  redesign of ollama.com: the quota left the settings page for `ollama.com/dashboard`
+  ("Free usage: N% left", plan badge, credits balance), which is now scraped instead.
+  `used_pct` is `100 - left`. The page shows no reset date anymore, so `resets_at` is
+  `None`; the previous page layout is still recognised
+- The session check no longer mistakes a signed-in page mentioning "sign in" for the
+  login page
+
+### Added
+- The per-model breakdown and the spend of the current month come from the usage report
+  (`/settings/usage/report`, fetched as a second request): `models[].requests`,
+  `models[].cost_usd` (new), `share_pct` as each model's share of the month's cost, and
+  `spend` with `period` `"current_month"`. If the report can't be read, the quota from
+  the dashboard is still returned
+- With an API key the quota is back without any cookie: it is read from the documented
+  `ollama.com/api/balance` endpoint. `monthly.used_pct` is the share of the included
+  credits spent, `resets_at` is when they refill (`included.period.until`: the day and
+  time of the month the plan started, not the 1st), `credits_balance` is the purchased
+  credits balance, and legacy plans get `session` / `weekly` with their reset dates.
+  If `/api/balance` can't be read, the spend from `/api/usage` is still returned (and
+  `get_usage_with_fallback` reads the quota from the dashboard)
+- `/api/usage` is queried over 30 days grouped by model: `spend` covers the last 30 days
+  (`period` `"30d"`) and `monthly.models` has each model's requests, cost and share
+- The CLI shows each model's cost, and the widget labels the spend with its period
+  (`month`, `4w`, `30d`)
+
+### Changed
+- `plan` comes from the dashboard meter label ("Free usage" → `"free"`, "Pro usage" →
+  `"pro"`...), as the API reports it — not from the "Pay as you go" billing badge
+- `get_usage_with_fallback` keeps the API spend, and uses the month's spend from the web
+  when the API reports none
+- With an API key, `--watch` and the widget refresh at most every 15 s (2 API calls per
+  refresh, 10 allowed per minute)
+
 
 ## [0.2.1] - 2026-10-08
 

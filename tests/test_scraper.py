@@ -218,7 +218,7 @@ class TestModelBreakdown:
 
     def test_model_keys(self, models_html: str) -> None:
         m = parse_html(models_html)["session"]["models"][0]
-        assert set(m.keys()) == {"model", "requests", "share_pct", "color"}
+        assert set(m.keys()) == {"model", "requests", "share_pct", "color", "cost_usd"}
 
     def test_session_model_names(self, models_html: str) -> None:
         names = [m["model"] for m in parse_html(models_html)["session"]["models"]]
@@ -718,8 +718,10 @@ class TestMonthlyPlans:
     def test_monthly_models(self) -> None:
         models = parse_html(make_monthly_html(buttons=_MONTHLY_BUTTONS))["monthly"]["models"]
         assert models == [
-            {"model": "deepseek-v3.1:671b", "requests": 112, "share_pct": 63.6, "color": "#22c55e"},
-            {"model": "gpt-oss:120b", "requests": 64, "share_pct": 36.4, "color": "#3b82f6"},
+            {"model": "deepseek-v3.1:671b", "requests": 112, "share_pct": 63.6, "color": "#22c55e",
+             "cost_usd": None},
+            {"model": "gpt-oss:120b", "requests": 64, "share_pct": 36.4, "color": "#3b82f6",
+             "cost_usd": None},
         ]
 
     def test_monthly_without_models(self) -> None:
@@ -870,7 +872,7 @@ class TestUsageDataAndIterPeriods:
         from ollama_usage.scraper import ModelUsage, PeriodUsage, UsageData
         data = UsageData(plan="pro", monthly=PeriodUsage(1.0, "t", [ModelUsage("m", 2, 3.0, "#abcdef")]))
         assert data.to_dict()["monthly"]["models"] == [
-            {"model": "m", "requests": 2, "share_pct": 3.0, "color": "#abcdef"},
+            {"model": "m", "requests": 2, "share_pct": 3.0, "color": "#abcdef", "cost_usd": None},
         ]
 
     def test_model_usage_default_color(self) -> None:
@@ -904,7 +906,7 @@ class TestFetchHtmlRequest:
         with patch("urllib.request.urlopen", return_value=resp) as urlopen:
             _fetch_html("abc123")
         req = urlopen.call_args[0][0]
-        assert req.full_url == "https://ollama.com/settings"
+        assert req.full_url == "https://ollama.com/dashboard"
         assert req.get_header("Cookie") == "__Secure-session=abc123"
         assert req.get_header("User-agent")
 
@@ -947,3 +949,295 @@ class TestPlanNames:
     def test_plan_badge(self, badge: str, expected: str) -> None:
         html = make_monthly_html().replace(">free</span", f">{badge}</span", 1)
         assert parse_html(html)["plan"] == expected
+
+
+# --- Dashboard + usage report (layout since 2026-11) ----------------------------------
+# Markup mirrors ollama.com/dashboard and /settings/usage/report; all values are made up.
+
+_ACCOUNT_MENU = '<details id="settings-account-menu"><summary>someone</summary></details>'
+
+
+def make_dashboard_html(
+    plan: str | None = "Pay as you go",
+    label: str = "Free",
+    pct: str = "72.5",
+    wording: str = "left",
+    balance: str = "$3.50",
+    account_menu: bool = True,
+) -> str:
+    badge = (
+        f'<span id="dashboard-plan" class="text-xs font-normal px-2 py-0.5 rounded-full">{plan}</span>'
+        if plan is not None else ""
+    )
+    return f"""
+    <div class="group/settings flex" data-page="dashboard">
+    {_ACCOUNT_MENU if account_menu else ""}
+    <section class="flex min-w-0 flex-col rounded-2xl" aria-label="Usage">
+      <div id="dashboard-meter" class="contents">
+        <div class="mb-1 flex items-center gap-2 text-sm">Usage credits{badge}</div>
+        <p class="text-2xl tabular-nums"><span id="extra-usage-balance">{balance}</span></p>
+      </div>
+      <div class="border-t border-rule pt-4">
+        <div class="text-sm">{label} usage</div>
+        <p id="dashboard-included" class="mt-3 text-2xl tabular-nums">{pct}% <span class="text-sm text-neutral-500">{wording}</span></p>
+      </div>
+    </section>
+    <section id="quickstart"><h2>Quickstart</h2></section>
+    </div>
+    """
+
+
+def _report_row(model: str, requests: str, cost: str) -> str:
+    cell = '<td class="h-12 border-b px-2.5 whitespace-nowrap text-right">'
+    return (
+        f'<tr><td class="h-12 border-b px-2.5 max-w-64 truncate ">{model}</td>'
+        f"{cell}{requests}</td>{cell}1.2M</td>{cell}34.5K</td>{cell}{cost}</td></tr>"
+    )
+
+
+_REPORT_ROWS = (
+    _report_row("qwen3-coder:480b", "1,250", "$0.90")
+    + _report_row("gpt-oss:120b", "300", "$0.30")
+    + _report_row("glm-4.6", "12", "&lt;$0.01")
+)
+_REPORT_LEGEND = (
+    '<span class="inline-flex"><i class="size-2" style="background: #ffcc00"></i>qwen3-coder:480b</span>'
+    '<span class="inline-flex"><i class="size-2" style="background: #34c759"></i>gpt-oss:120b</span>'
+)
+
+
+def make_report_html(
+    total: str = "$1.20",
+    rows: str | None = _REPORT_ROWS,
+    legend: str = _REPORT_LEGEND,
+    fetched_at: str | None = "2026-05-07T10:00:00Z",
+) -> str:
+    fetched = (
+        f'<p class="mt-3 text-caption text-muted"><span data-usage-fetched="">Last updated '
+        f'<time datetime="{fetched_at}">10:00:00 UTC</time></span></p>'
+        if fetched_at else ""
+    )
+    table = "" if rows is None else f"""
+    <div id="usage-by-model" role="tabpanel" class="overflow-x-auto">
+      <table class="w-full text-ui">
+        <thead><tr><th>Model</th><th>Requests</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+        <tbody>{rows}</tbody>
+      </table>
+      {fetched}
+    </div>"""
+    return f"""
+  <section class="pt-8" aria-labelledby="usage-cost-title">
+    <div class="mb-5"><h2 id="usage-cost-title">Cost</h2><p class="mt-0.5 text-ui text-muted">May 1–7, UTC</p></div>
+    <dl class="grid grid-cols-2">
+      <div class="min-w-0"><dt class="text-ui text-muted">Total cost</dt>
+        <dd class="mt-1 text-stat font-semibold">{total}</dd></div>
+      <div class="min-w-0"><dt class="text-ui text-muted">Model cost</dt>
+        <dd class="mt-1 text-stat font-semibold">{total}</dd></div>
+      <div class="min-w-0"><dt class="text-ui text-muted">Requests</dt>
+        <dd class="mt-1 text-stat font-semibold">1,562</dd></div>
+    </dl>
+    <figure class="mt-10" aria-label="Daily cost by model" data-usage-chart="">
+      <figcaption class="mb-4 flex">{legend}</figcaption>
+    </figure>
+  </section>
+  <section class="pt-12" aria-label="Usage breakdown">{table}
+  </section>
+"""
+
+
+class TestDashboard:
+
+    def test_used_pct_is_complement_of_left(self) -> None:
+        assert parse_html(make_dashboard_html(pct="72.5"))["monthly"]["used_pct"] == 27.5
+
+    def test_used_pct_is_rounded(self) -> None:
+        assert parse_html(make_dashboard_html(pct="66.7"))["monthly"]["used_pct"] == 33.3
+
+    def test_used_wording_is_kept_as_is(self) -> None:
+        data = parse_html(make_dashboard_html(pct="12.5", wording="used"))
+        assert data["monthly"]["used_pct"] == 12.5
+
+    @pytest.mark.parametrize("pct,expected", [("100", 0.0), ("0", 100.0), ("100.0", 0.0)])
+    def test_bounds(self, pct: str, expected: float) -> None:
+        assert parse_html(make_dashboard_html(pct=pct))["monthly"]["used_pct"] == expected
+
+    def test_no_reset_date(self) -> None:
+        assert parse_html(make_dashboard_html())["monthly"]["resets_at"] is None
+
+    def test_only_monthly(self) -> None:
+        data = parse_html(make_dashboard_html())
+        assert data["session"] is None and data["weekly"] is None
+
+    @pytest.mark.parametrize("label", ["Free", "Pro", "Max", "Team"])
+    def test_label_maps_to_monthly(self, label: str) -> None:
+        assert parse_html(make_dashboard_html(label=label))["monthly"] is not None
+
+    @pytest.mark.parametrize("label,expected", [("Free", "free"), ("Pro", "pro"), ("Max", "max"),
+                                                ("Pro  Max", "pro max")])
+    def test_plan_from_meter_label(self, label: str, expected: str) -> None:
+        assert parse_html(make_dashboard_html(label=label))["plan"] == expected
+
+    @pytest.mark.parametrize("badge", ["Pay as you go", None])
+    def test_billing_badge_is_not_the_plan(self, badge) -> None:
+        assert parse_html(make_dashboard_html(plan=badge))["plan"] == "free"
+
+    def test_credits_balance(self) -> None:
+        assert parse_html(make_dashboard_html(balance="$3.50"))["credits_balance"] == 3.5
+
+    def test_zero_credits_balance(self) -> None:
+        assert parse_html(make_dashboard_html(balance="$0"))["credits_balance"] == 0.0
+
+    def test_without_report_no_models_no_spend(self) -> None:
+        data = parse_html(make_dashboard_html())
+        assert data["monthly"]["models"] == []
+        assert data["spend"] is None
+        assert data["source"] == "web"
+
+    def test_missing_percentage_raises(self) -> None:
+        html = make_dashboard_html().replace("72.5%", "-")
+        with pytest.raises(ParseError):
+            parse_html(html)
+
+    def test_signed_in_page_mentioning_sign_in_passes(self) -> None:
+        html = make_dashboard_html() + "<p>Sign in to the CLI with ollama signin</p>"
+        assert parse_html(html)["monthly"]["used_pct"] == 27.5
+
+    def test_login_page_raises(self) -> None:
+        html = make_dashboard_html(account_menu=False) + '<a href="/login">Sign in</a>'
+        with pytest.raises(AuthError):
+            parse_html(html)
+
+
+class TestUsageReport:
+
+    def _parse(self, **kwargs) -> dict:
+        return parse_html(make_dashboard_html(), make_report_html(**kwargs))
+
+    def test_models_from_report(self) -> None:
+        assert self._parse()["monthly"]["models"] == [
+            {"model": "qwen3-coder:480b", "requests": 1250, "share_pct": 75.0,
+             "color": "#ffcc00", "cost_usd": 0.9},
+            {"model": "gpt-oss:120b", "requests": 300, "share_pct": 25.0,
+             "color": "#34c759", "cost_usd": 0.3},
+            {"model": "glm-4.6", "requests": 12, "share_pct": 0.0,
+             "color": "#888888", "cost_usd": 0.0},
+        ]
+
+    def test_share_is_none_when_nothing_was_billed(self) -> None:
+        rows = _report_row("glm-4.6", "3", "&lt;$0.01") + _report_row("gpt-oss:20b", "1", "$0.00")
+        models = self._parse(rows=rows)["monthly"]["models"]
+        assert [m["share_pct"] for m in models] == [None, None]
+        assert [m["requests"] for m in models] == [3, 1]
+
+    def test_large_amounts(self) -> None:
+        rows = _report_row("qwen3-coder:480b", "12,345", "$1,234.50")
+        models = self._parse(total="$1,234.50", rows=rows)["monthly"]["models"]
+        assert models[0]["requests"] == 12345
+        assert models[0]["cost_usd"] == 1234.5
+        assert models[0]["share_pct"] == 100.0
+
+    def test_spend_of_the_month(self) -> None:
+        assert self._parse()["spend"] == {
+            "cost_usd": 1.2,
+            "period": "current_month",
+            "starting_at": "2026-05-01T00:00:00Z",
+            "ending_at": "2026-05-07T10:00:00Z",
+        }
+
+    def test_spend_below_one_cent(self) -> None:
+        assert self._parse(total="&lt;$0.01")["spend"]["cost_usd"] == 0.0
+
+    def test_spend_without_timestamp(self) -> None:
+        spend = self._parse(fetched_at=None)["spend"]
+        assert spend["starting_at"] is None and spend["ending_at"] is None
+
+    def test_empty_month(self) -> None:
+        data = self._parse(total="$0.00", rows=None, legend="")
+        assert data["monthly"]["models"] == []
+        assert data["spend"]["cost_usd"] == 0.0
+
+    def test_quota_still_comes_from_dashboard(self) -> None:
+        assert self._parse()["monthly"]["used_pct"] == 27.5
+
+    def test_unreadable_report_is_ignored(self) -> None:
+        data = parse_html(make_dashboard_html(), "<p>Could not load usage</p>")
+        assert data["monthly"]["used_pct"] == 27.5
+        assert data["monthly"]["models"] == []
+        assert data["spend"] is None
+
+    def test_bad_cell_makes_report_ignored(self) -> None:
+        rows = _report_row("qwen3-coder:480b", "lots", "$0.90")
+        data = self._parse(rows=rows)
+        assert data["monthly"]["models"] == [] and data["spend"] is None
+
+    def test_login_report_is_ignored(self) -> None:
+        data = parse_html(make_dashboard_html(), '<a href="/login">Sign in</a>')
+        assert data["monthly"]["used_pct"] == 27.5
+        assert data["spend"] is None
+
+    def test_placeholder_rows_are_skipped(self) -> None:
+        rows = '<tr><td colspan="5" class="h-36"></td></tr>' + _report_row("glm-4.6", "2", "$0.10")
+        assert [m["model"] for m in self._parse(rows=rows)["monthly"]["models"]] == ["glm-4.6"]
+
+    def test_parse_report_directly(self) -> None:
+        from ollama_usage.scraper import parse_report
+        models, spend = parse_report(make_report_html())
+        assert [m.model for m in models] == ["qwen3-coder:480b", "gpt-oss:120b", "glm-4.6"]
+        assert spend["cost_usd"] == 1.2
+
+
+def _report_errors():
+    import urllib.error
+    return [
+        urllib.error.URLError("down"),
+        urllib.error.HTTPError("u", 403, "Forbidden", {}, None),
+        urllib.error.HTTPError("u", 500, "Oops", {}, None),
+    ]
+
+
+class TestGetUsageDashboard:
+
+    @staticmethod
+    def _resp(body: str):
+        from unittest.mock import MagicMock
+        resp = MagicMock()
+        resp.read.return_value = body.encode("utf-8")
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        return resp
+
+    def test_fetches_dashboard_then_report(self) -> None:
+        from unittest.mock import patch
+        from ollama_usage.scraper import get_usage
+
+        bodies = [self._resp(make_dashboard_html()), self._resp(make_report_html())]
+        with patch("urllib.request.urlopen", side_effect=bodies) as urlopen:
+            data = get_usage("cookie")
+        dashboard_req, report_req = (c[0][0] for c in urlopen.call_args_list)
+        assert dashboard_req.full_url == "https://ollama.com/dashboard"
+        assert report_req.full_url == "https://ollama.com/settings/usage/report?scope=self"
+        assert report_req.get_header("Hx-request") == "true"
+        assert report_req.get_header("Cookie") == "__Secure-session=cookie"
+        assert dashboard_req.get_header("Hx-request") is None
+        assert data["monthly"]["used_pct"] == 27.5
+        assert len(data["monthly"]["models"]) == 3
+        assert data["spend"]["cost_usd"] == 1.2
+
+    @pytest.mark.parametrize("error", _report_errors())
+    def test_report_failure_keeps_quota(self, error) -> None:
+        from unittest.mock import patch
+        from ollama_usage.scraper import get_usage
+
+        with patch("urllib.request.urlopen", side_effect=[self._resp(make_dashboard_html()), error]):
+            data = get_usage("cookie")
+        assert data["monthly"]["used_pct"] == 27.5
+        assert data["monthly"]["models"] == []
+        assert data["spend"] is None
+
+    def test_legacy_page_skips_report(self) -> None:
+        from unittest.mock import patch
+        from ollama_usage.scraper import get_usage
+
+        with patch("urllib.request.urlopen", return_value=self._resp(make_html())) as urlopen:
+            get_usage("cookie")
+        assert urlopen.call_count == 1

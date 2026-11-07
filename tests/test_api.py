@@ -70,7 +70,8 @@ class TestParseMonthly:
 
     def test_monthly_models(self) -> None:
         assert parse_api_response(MONTHLY_PAYLOAD)["monthly"]["models"] == [
-            {"model": "glm-5.3-flash", "requests": 213, "share_pct": None, "color": None},
+            {"model": "glm-5.3-flash", "requests": 213, "share_pct": None, "color": None,
+             "cost_usd": None},
         ]
 
     def test_fields_not_exposed_by_api(self) -> None:
@@ -111,7 +112,7 @@ class TestParseLegacy:
     def test_models_as_dict(self) -> None:
         payload = {"limits": {"session": {"usage": 0.025, "models": {"qwen3": {"request_count": 7}}}}}
         assert parse_api_response(payload)["session"]["models"] == [
-            {"model": "qwen3", "requests": 7, "share_pct": None, "color": None},
+            {"model": "qwen3", "requests": 7, "share_pct": None, "color": None, "cost_usd": None},
         ]
 
 
@@ -173,6 +174,14 @@ class TestUsageWithFallback:
         assert data["monthly"]["used_pct"] == 18.4
         assert data["spend"]["cost_usd"] == 1.68054
 
+    def test_web_spend_kept_when_the_api_has_none(self) -> None:
+        web_spend = {"cost_usd": 0.5, "period": "current_month",
+                     "starting_at": "2026-05-01T00:00:00Z", "ending_at": "2026-05-07T10:00:00Z"}
+        payload = {"range": "7d", "totals": {"usage_usd": None}}
+        with self._api(payload),              patch("ollama_usage.scraper.get_usage", return_value={**self.WEB, "spend": web_spend}):
+            data = get_usage_with_fallback("sk", "cookie")
+        assert data["spend"] == web_spend
+
     def test_falls_back_to_a_browser_cookie(self) -> None:
         with self._api(TIMESERIES_PAYLOAD), \
              patch("ollama_usage.cookie.get_cookie_env", return_value=None), \
@@ -226,10 +235,12 @@ class TestGetUsageApi:
         body = json.dumps(MONTHLY_PAYLOAD).encode()
         with patch("urllib.request.urlopen", return_value=_response(body)) as urlopen:
             data = get_usage_api("sk-test")
-        assert data["monthly"]["used_pct"] == 0.7
-        req = urlopen.call_args[0][0]
-        assert req.full_url == "https://ollama.com/api/usage"
-        assert req.get_header("Authorization") == "Bearer sk-test"
+        assert data["monthly"]["used_pct"] == 0.7  # no balance in that payload: kept
+        usage_req, balance_req = (c[0][0] for c in urlopen.call_args_list)
+        assert usage_req.full_url == "https://ollama.com/api/usage?range=30d&group_by=model"
+        assert balance_req.full_url == "https://ollama.com/api/balance"
+        assert usage_req.get_header("Authorization") == "Bearer sk-test"
+        assert balance_req.get_header("Authorization") == "Bearer sk-test"
 
     @pytest.mark.parametrize("code", [401, 403])
     def test_auth_error(self, code: int) -> None:
@@ -345,7 +356,7 @@ class TestParseModelsEdgeCases:
     def test_dict_form_with_non_dict_info(self) -> None:
         payload = {"limits": {"weekly": {"usage": 0.1, "models": {"a": 12}}}}
         assert parse_api_response(payload)["weekly"]["models"] == [
-            {"model": "a", "requests": 0, "share_pct": None, "color": None},
+            {"model": "a", "requests": 0, "share_pct": None, "color": None, "cost_usd": None},
         ]
 
     @pytest.mark.parametrize("models", ["gemma", 42, None])
@@ -433,3 +444,202 @@ class TestRequestHeaders:
         with patch("urllib.request.urlopen", return_value=_response(b"")):
             with pytest.raises(ParseError, match="invalid JSON"):
                 get_usage_api("sk-test")
+
+
+# /api/balance (documented at docs.ollama.com/api/balance) — invented values.
+BALANCE_PAYLOAD = {
+    "included": {
+        "balance_usd": 1.5,
+        "allowance_usd": 2.0,
+        "period": {"from": "2026-04-15T08:30:00.123456Z", "until": "2026-05-15T08:30:00.123456Z"},
+    },
+    "purchased": {"balance_usd": 4.25},
+}
+
+LEGACY_BALANCE_PAYLOAD = {
+    "included": {
+        "session": {"remaining_percent": 88, "resets_at": "2026-04-04T15:00:00Z"},
+        "weekly": {"remaining_percent": 60.5, "resets_at": "2026-04-06T00:00:00Z"},
+    },
+    "purchased": {"balance_usd": 0},
+}
+
+GROUPED_USAGE_PAYLOAD = {
+    "range": "30d",
+    "scope": "self",
+    "granularity": "day",
+    "group_by": "model",
+    "from": "2026-04-08T00:00:00Z",
+    "until": "2026-05-07T10:00:00Z",
+    "totals": {
+        "request_count": 1500,
+        "usage_usd": 0.8,
+        "groups": [
+            {"model": "qwen3-coder:480b", "request_count": 1000, "usage_usd": 0.6},
+            {"model": "gpt-oss:120b", "request_count": 450, "usage_usd": 0.2},
+            {"model": "glm-4.6", "request_count": 50, "usage_usd": 0},
+        ],
+    },
+    "buckets": [],
+}
+
+
+def _api_responses(usage=GROUPED_USAGE_PAYLOAD, balance=BALANCE_PAYLOAD):
+    """urlopen side effect: /api/usage first, then /api/balance (payload or exception)."""
+    def one(item):
+        return item if isinstance(item, Exception) else _response(json.dumps(item).encode())
+    return [one(usage), one(balance)]
+
+
+class TestParseBalance:
+
+    def test_monthly_from_included_credits(self) -> None:
+        from ollama_usage.api import parse_balance_response
+        data = parse_balance_response(BALANCE_PAYLOAD)
+        assert data["monthly"] == {
+            "used_pct": 25.0,
+            "resets_at": "2026-05-15T08:30:00.123456Z",
+            "models": [],
+        }
+        assert data["session"] is None and data["weekly"] is None
+
+    def test_purchased_credits(self) -> None:
+        from ollama_usage.api import parse_balance_response
+        assert parse_balance_response(BALANCE_PAYLOAD)["credits_balance"] == 4.25
+
+    @pytest.mark.parametrize("balance,expected", [(2.0, 0.0), (0, 100.0), (-1, 100.0), (3.0, 0.0),
+                                                  (0.5, 75.0)])
+    def test_used_pct_bounds_and_rounding(self, balance: float, expected: float) -> None:
+        from ollama_usage.api import parse_balance_response
+        payload = {"included": {"balance_usd": balance, "allowance_usd": 2.0}}
+        assert parse_balance_response(payload)["monthly"]["used_pct"] == expected
+
+    def test_without_period_no_reset(self) -> None:
+        from ollama_usage.api import parse_balance_response
+        payload = {"included": {"balance_usd": 1, "allowance_usd": 2, "period": "x"}}
+        assert parse_balance_response(payload)["monthly"]["resets_at"] is None
+
+    @pytest.mark.parametrize("included", [{}, {"allowance_usd": 0, "balance_usd": 0},
+                                          {"allowance_usd": "n/a", "balance_usd": 1},
+                                          {"allowance_usd": 2}])
+    def test_no_included_allowance_no_monthly(self, included: dict) -> None:
+        from ollama_usage.api import parse_balance_response
+        data = parse_balance_response({"included": included, "purchased": {"balance_usd": 3}})
+        assert data["monthly"] is None
+        assert data["credits_balance"] == 3.0
+
+    def test_legacy_session_and_weekly(self) -> None:
+        from ollama_usage.api import parse_balance_response
+        data = parse_balance_response(LEGACY_BALANCE_PAYLOAD)
+        assert data["session"] == {"used_pct": 12.0, "resets_at": "2026-04-04T15:00:00Z", "models": []}
+        assert data["weekly"] == {"used_pct": 39.5, "resets_at": "2026-04-06T00:00:00Z", "models": []}
+        assert data["monthly"] is None
+        assert data["credits_balance"] == 0.0
+
+    @pytest.mark.parametrize("payload", [{}, {"included": None}, {"included": [], "purchased": "x"}])
+    def test_unexpected_payload_raises(self, payload: dict) -> None:
+        from ollama_usage.api import parse_balance_response
+        with pytest.raises(ParseError):
+            parse_balance_response(payload)
+
+
+class TestParseGroups:
+
+    def test_models_from_groups(self) -> None:
+        from ollama_usage.api import _parse_groups
+        assert _parse_groups(GROUPED_USAGE_PAYLOAD) == [
+            {"model": "qwen3-coder:480b", "requests": 1000, "share_pct": 75.0, "color": None, "cost_usd": 0.6},
+            {"model": "gpt-oss:120b", "requests": 450, "share_pct": 25.0, "color": None, "cost_usd": 0.2},
+            {"model": "glm-4.6", "requests": 50, "share_pct": 0.0, "color": None, "cost_usd": 0.0},
+        ]
+
+    def test_legacy_requests_without_cost_have_no_share(self) -> None:
+        from ollama_usage.api import _parse_groups
+        payload = {"totals": {"usage_usd": 0, "groups": [{"model": "qwen3", "request_count": 7}]}}
+        assert _parse_groups(payload) == [
+            {"model": "qwen3", "requests": 7, "share_pct": None, "color": None, "cost_usd": None},
+        ]
+
+    @pytest.mark.parametrize("totals", [None, {}, {"groups": "x"}, {"groups": [None, {"usage_usd": 1}]}])
+    def test_no_groups(self, totals) -> None:
+        from ollama_usage.api import _parse_groups
+        assert _parse_groups({"totals": totals}) == []
+
+    def test_spend_over_30_days(self) -> None:
+        assert parse_api_response(GROUPED_USAGE_PAYLOAD)["spend"] == {
+            "cost_usd": 0.8, "period": "30d",
+            "starting_at": "2026-04-08T00:00:00Z", "ending_at": "2026-05-07T10:00:00Z",
+        }
+
+
+class TestGetUsageApiWithBalance:
+
+    def test_quota_spend_and_models(self) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses()):
+            data = get_usage_api("sk-test")
+        assert data["monthly"]["used_pct"] == 25.0
+        assert data["monthly"]["resets_at"] == "2026-05-15T08:30:00.123456Z"
+        assert [m["model"] for m in data["monthly"]["models"]] == [
+            "qwen3-coder:480b", "gpt-oss:120b", "glm-4.6"]
+        assert data["credits_balance"] == 4.25
+        assert data["spend"]["cost_usd"] == 0.8
+        assert data["plan"] is None
+        assert data["source"] == "api"
+        assert "models" not in data
+
+    def test_legacy_plan(self) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses(balance=LEGACY_BALANCE_PAYLOAD)):
+            data = get_usage_api("sk-test")
+        assert data["session"]["used_pct"] == 12.0
+        assert data["weekly"]["resets_at"] == "2026-04-06T00:00:00Z"
+        assert data["monthly"] is None
+        assert data["session"]["models"] == []
+
+    def test_balance_unavailable_keeps_spend(self) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses(balance=_http_error(503))):
+            data = get_usage_api("sk-test")
+        assert data["monthly"] is None
+        assert data["spend"]["cost_usd"] == 0.8
+        assert "models" not in data
+
+    def test_usage_unavailable_keeps_quota(self) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses(usage=_http_error(429))):
+            data = get_usage_api("sk-test")
+        assert data["monthly"]["used_pct"] == 25.0
+        assert data["monthly"]["models"] == []
+        assert data["spend"] is None
+        assert data["credits_balance"] == 4.25
+
+    def test_invalid_balance_payload_keeps_spend(self) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses(balance={"oops": 1})):
+            data = get_usage_api("sk-test")
+        assert data["spend"]["cost_usd"] == 0.8
+
+    def test_both_unavailable_raises_first_error(self) -> None:
+        responses = _api_responses(usage=_http_error(503), balance=urllib.error.URLError("down"))
+        with patch("urllib.request.urlopen", side_effect=responses):
+            with pytest.raises(NetworkError, match="HTTP error 503"):
+                get_usage_api("sk-test")
+
+    def test_auth_error_on_balance_raises(self) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses(balance=_http_error(401))):
+            with pytest.raises(AuthError):
+                get_usage_api("sk-test")
+
+    def test_fallback_not_needed_when_balance_has_quota(self) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses()), \
+             patch("ollama_usage.scraper.get_usage") as web:
+            data = get_usage_with_fallback("sk-test", "cookie")
+        web.assert_not_called()
+        assert data["monthly"]["resets_at"] == "2026-05-15T08:30:00.123456Z"
+
+    def test_fallback_to_web_when_balance_unavailable(self) -> None:
+        web_data = {"plan": "free", "session": None, "weekly": None,
+                    "monthly": {"used_pct": 30.0, "resets_at": None, "models": []},
+                    "credits_balance": 0.0, "spend": None, "source": "web"}
+        with patch("urllib.request.urlopen", side_effect=_api_responses(balance=_http_error(503))), \
+             patch("ollama_usage.scraper.get_usage", return_value=web_data) as web:
+            data = get_usage_with_fallback("sk-test", "cookie")
+        web.assert_called_once_with("cookie")
+        assert data["monthly"]["used_pct"] == 30.0
+        assert data["spend"]["cost_usd"] == 0.8

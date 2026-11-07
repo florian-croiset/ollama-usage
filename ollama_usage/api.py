@@ -1,14 +1,19 @@
-"""Fetch Ollama Cloud usage from the official ollama.com/api/usage endpoint.
+"""Fetch Ollama Cloud usage from the official ollama.com API endpoints.
 
 Authenticated with an ollama.com API key (https://ollama.com/settings/keys).
-Unlike the settings page, the API does not expose the plan name, reset dates,
-per-model share of the meter or the usage credits balance — those fields are
-returned as None.
+Two documented endpoints are combined:
 
-Since 2026-10-07 the endpoint no longer reports a quota percentage at all: it
-returns the spend over the last days (``range``, ``totals``, ``buckets``). The
-periods of the usage dict are then None and only ``spend`` is filled; use
-:func:`get_usage_with_fallback` to get the percentage from the settings page.
+- ``/api/balance`` (https://docs.ollama.com/api/balance): the included credits of
+  the plan for the current period (balance, allowance, ``period.until`` = when they
+  refill) and the purchased credits balance; ``included.session`` / ``.weekly`` with
+  ``remaining_percent`` and ``resets_at`` on legacy plans. It gives the quota.
+- ``/api/usage`` (https://docs.ollama.com/api/cloud-usage): requests and value in
+  USD over the last 30 days, grouped by model. It gives ``spend`` and the per-model
+  breakdown.
+
+The API does not expose the plan name (``plan`` is None). Since 2026-10-07
+``/api/usage`` alone reports no quota; when ``/api/balance`` can't be read either,
+:func:`get_usage_with_fallback` reads the percentage from the dashboard.
 """
 
 from __future__ import annotations
@@ -25,6 +30,9 @@ from ollama_usage.scraper import _SSL_CONTEXT, _TIMEOUT, PERIOD_KEYS
 logger = logging.getLogger(__name__)
 
 _USAGE_API_URL = "https://ollama.com/api/usage"
+# 30 days: the reporting window closest to the monthly quota period (24h / 7d / 30d).
+_USAGE_QUERY_URL = _USAGE_API_URL + "?range=30d&group_by=model"
+_BALANCE_API_URL = "https://ollama.com/api/balance"
 _API_KEY_ENV = "OLLAMA_API_KEY"
 
 
@@ -34,11 +42,11 @@ def get_api_key_env() -> str | None:
     return value or None
 
 
-def _fetch_json(api_key: str) -> dict:
-    """GET /api/usage with the API key and return the decoded JSON body."""
-    logger.debug("Fetching %s (api key: ***)", _USAGE_API_URL)
+def _fetch_json(api_key: str, url: str = _USAGE_API_URL) -> dict:
+    """GET an API endpoint with the API key and return the decoded JSON body."""
+    logger.debug("Fetching %s (api key: ***)", url)
     req = urllib.request.Request(
-        _USAGE_API_URL,
+        url,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Accept": "application/json",
@@ -53,16 +61,16 @@ def _fetch_json(api_key: str) -> dict:
             raise AuthError(
                 f"Access denied (HTTP {e.code}) — API key is invalid or revoked."
             ) from e
-        raise NetworkError(f"HTTP error {e.code} reaching {_USAGE_API_URL}") from e
+        raise NetworkError(f"HTTP error {e.code} reaching {url}") from e
     except urllib.error.URLError as e:
-        raise NetworkError(f"Failed to reach {_USAGE_API_URL}: {e}") from e
+        raise NetworkError(f"Failed to reach {url}: {e}") from e
 
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise ParseError(f"Usage API returned invalid JSON: {e}") from e
+        raise ParseError(f"API returned invalid JSON ({url}): {e}") from e
     if not isinstance(payload, dict):
-        raise ParseError("Usage API returned an unexpected payload (not a JSON object).")
+        raise ParseError(f"API returned an unexpected payload (not a JSON object) at {url}.")
     return payload
 
 
@@ -80,6 +88,7 @@ def _parse_models(raw) -> list[dict]:
             "requests": int(item.get("request_count") or 0),
             "share_pct": None,
             "color": None,
+            "cost_usd": None,
         }
         for item in items
         if item.get("name")
@@ -135,6 +144,88 @@ def _parse_totals_spend(payload: dict) -> dict | None:
     }
 
 
+def _to_float(value) -> float | None:
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_int(value) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_groups(payload: dict) -> list[dict]:
+    """Per-model usage from ``totals.groups`` (``group_by=model``), ranked by cost."""
+    totals = payload.get("totals")
+    groups = totals.get("groups") if isinstance(totals, dict) else None
+    if not isinstance(groups, list):
+        return []
+    models = []
+    for group in groups:
+        if not isinstance(group, dict) or not group.get("model"):
+            continue
+        models.append({
+            "model": str(group["model"]),
+            "requests": _to_int(group.get("request_count")),
+            "share_pct": None,
+            "color": None,
+            "cost_usd": _to_float(group.get("usage_usd")),
+        })
+    total = _to_float(totals.get("usage_usd")) or sum(m["cost_usd"] or 0.0 for m in models)
+    if total and total > 0:  # legacy-plan requests have no cost: no share then
+        for m in models:
+            m["share_pct"] = round((m["cost_usd"] or 0.0) * 100.0 / total, 1)
+    return models
+
+
+def _period_until(raw) -> str | None:
+    period = raw.get("period") if isinstance(raw, dict) else None
+    return period.get("until") if isinstance(period, dict) else None
+
+
+def parse_balance_response(payload: dict) -> dict:
+    """Convert an /api/balance JSON payload into quota periods and the credits balance.
+
+    Returns ``{"session", "weekly", "monthly", "credits_balance"}``. On credit-based
+    plans the monthly ``used_pct`` is the share of the included credits spent and
+    ``resets_at`` is when they refill (``included.period.until``); a plan without
+    included credits has no monthly quota. Legacy plans report session / weekly.
+    """
+    included = payload.get("included")
+    purchased = payload.get("purchased")
+    if not isinstance(included, dict) and not isinstance(purchased, dict):
+        raise ParseError("Balance API response has neither 'included' nor 'purchased'.")
+    included = included if isinstance(included, dict) else {}
+
+    periods: dict[str, dict | None] = {key: None for key in PERIOD_KEYS}
+    for key in ("session", "weekly"):
+        raw = included.get(key)
+        remaining = _to_float(raw.get("remaining_percent")) if isinstance(raw, dict) else None
+        if remaining is not None:
+            periods[key] = {
+                "used_pct": round(min(max(100.0 - remaining, 0.0), 100.0), 1),
+                "resets_at": raw.get("resets_at"),
+                "models": [],
+            }
+
+    allowance = _to_float(included.get("allowance_usd"))
+    balance = _to_float(included.get("balance_usd"))
+    if allowance and allowance > 0 and balance is not None:
+        used = (allowance - balance) * 100.0 / allowance
+        periods["monthly"] = {
+            "used_pct": round(min(max(used, 0.0), 100.0), 1),
+            "resets_at": _period_until(included),
+            "models": [],
+        }
+
+    credits = _to_float(purchased.get("balance_usd")) if isinstance(purchased, dict) else None
+    return {**periods, "credits_balance": credits}
+
+
 def parse_api_response(payload: dict) -> dict:
     """Convert an /api/usage JSON payload into the usage dict returned by get_usage()."""
     limits = payload.get("limits")
@@ -149,6 +240,9 @@ def parse_api_response(payload: dict) -> dict:
         "spend": _parse_spend(payload.get("activity")) or _parse_totals_spend(payload),
         "source": "api",
     }
+    models = _parse_groups(payload)
+    if models:
+        data["models"] = models  # attached to the monthly quota by get_usage_api()
     logger.debug(
         "Parsed API: %s",
         ", ".join(f"{k}={data[k]['used_pct']}%" for k in PERIOD_KEYS if data[k]) or "no limits",
@@ -156,18 +250,65 @@ def parse_api_response(payload: dict) -> dict:
     return data
 
 
+def _empty_api_data() -> dict:
+    return {"plan": None, **{key: None for key in PERIOD_KEYS},
+            "credits_balance": None, "spend": None, "source": "api"}
+
+
+def _merge_balance(data: dict, balance: dict) -> None:
+    """Put the quota from /api/balance into the /api/usage result (in place)."""
+    models = data.get("models", [])
+    for key in PERIOD_KEYS:
+        period = balance.get(key)
+        if period is None:
+            continue
+        previous = data.get(key)
+        if previous and previous.get("models"):
+            period["models"] = previous["models"]
+        elif key == "monthly":
+            period["models"] = models
+        data[key] = period
+    if balance.get("credits_balance") is not None:
+        data["credits_balance"] = balance["credits_balance"]
+
+
 def get_usage_api(api_key: str) -> dict:
-    """Fetch and return Ollama Cloud usage using the official API and an API key."""
-    return parse_api_response(_fetch_json(api_key))
+    """Fetch and return Ollama Cloud usage using the official API and an API key.
+
+    The quota comes from /api/balance, the spend and per-model breakdown from
+    /api/usage. If one of them can't be read the other one is still returned; an
+    invalid key (AuthError) or both failing raises.
+    """
+    errors: list[Exception] = []
+
+    def _try(url, parse):
+        try:
+            return parse(_fetch_json(api_key, url))
+        except AuthError:
+            raise
+        except (NetworkError, ParseError) as e:
+            logger.debug("Could not read %s: %s", url, e)
+            errors.append(e)
+            return None
+
+    data = _try(_USAGE_QUERY_URL, parse_api_response)
+    balance = _try(_BALANCE_API_URL, parse_balance_response)
+    if data is None and balance is None:
+        raise errors[0]
+    data = data or _empty_api_data()
+    if balance is not None:
+        _merge_balance(data, balance)
+    data.pop("models", None)
+    return data
 
 
 def get_usage_with_fallback(api_key: str, cookie: str | None = None) -> dict:
-    """Usage from the API, completed from the settings page when the API has no quota.
+    """Usage from the API, completed from the dashboard when the API has no quota.
 
     The API alone no longer gives a percentage (see the module docstring). When it
     returns none and a session cookie is available — the one passed in, or the one
-    found in a browser — the settings page supplies the quota and the API's spend
-    is kept. Without any cookie the API-only result is returned unchanged.
+    found in a browser — the dashboard supplies the quota and the API's spend is
+    kept (the month's spend from the web report is used when the API has none). Without any cookie the API-only result is returned unchanged.
     """
     from ollama_usage.cookie import get_cookie_auto, get_cookie_env
     from ollama_usage.exceptions import OllamaUsageError
@@ -182,7 +323,7 @@ def get_usage_with_fallback(api_key: str, cookie: str | None = None) -> dict:
         except OllamaUsageError:
             logger.debug("No session cookie available to complete the API result")
             return data
-    logger.debug("API reported no quota — reading it from the settings page")
+    logger.debug("API reported no quota — reading it from the dashboard")
     web = get_usage(cookie)
-    web["spend"] = data["spend"]
+    web["spend"] = data["spend"] or web.get("spend")
     return web

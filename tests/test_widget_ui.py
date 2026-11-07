@@ -297,6 +297,20 @@ class TestDrawFull:
         w._draw()
         assert "spend $1.50 (4w)" in texts(w)
 
+    def test_month_spend_extra(self) -> None:
+        data = web_monthly_data(balance=None)
+        data["spend"] = {"cost_usd": 0.75, "period": "current_month"}
+        w = make_widget(data=data)
+        w._draw()
+        assert "spend $0.75 (month)" in texts(w)
+
+    def test_spend_extra_with_other_period(self) -> None:
+        data = api_data()
+        data["spend"]["period"] = "7d"
+        w = make_widget(data=data)
+        w._draw()
+        assert "spend $1.50 (7d)" in texts(w)
+
     def test_credits_extra(self) -> None:
         w = make_widget(data=web_monthly_data(balance=12.5))
         w._draw()
@@ -304,7 +318,7 @@ class TestDrawFull:
 
     def test_credits_and_spend_joined(self) -> None:
         data = web_monthly_data(balance=1.0)
-        data["spend"] = {"cost_usd": 2.0}
+        data["spend"] = {"cost_usd": 2.0, "period": "last_4_weeks"}
         w = make_widget(data=data)
         w._draw()
         assert "credits $1.00  ·  spend $2.00 (4w)" in texts(w)
