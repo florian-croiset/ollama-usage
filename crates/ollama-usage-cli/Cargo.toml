@@ -1,0 +1,32 @@
+[package]
+name = "ollama-usage-cli"
+description = "Command-line tool to read your Ollama Cloud quota, credits and per-model usage."
+keywords = ["ollama", "quota", "usage", "cli"]
+categories = ["command-line-utilities"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "ollama-usage"
+path = "src/main.rs"
+
+[dependencies]
+anstream = "1.0.0"
+clap = { version = "4.6.7", features = ["derive", "env", "wrap_help"] }
+dirs = "7.0.0"
+env_logger = { version = "0.11.11", default-features = false }
+log = "0.4.35"
+ollama-usage.workspace = true
+owo-colors = "4.4.0"
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+toml = "1.2.1"
+
+[lints]
+workspace = true
