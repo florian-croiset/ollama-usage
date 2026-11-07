@@ -82,7 +82,7 @@ The Python and Rust libraries read nothing on their own: pass them the key.
 | --- | --- |
 | `--range 24h\|7d\|30d` | Period of the usage breakdown. Default `30d`. |
 | `--json` | Print the [JSON report](#json-report) instead of the table. |
-| `--alert PCT` | Exit with code 1 when a quota window is at or above `PCT` percent. |
+| `--alert PCT` | Exit with code 1 when a quota window is at or above `PCT` percent, and say which on stderr. |
 | `-q`, `--quiet` | Print nothing at all; only the exit code tells the outcome. |
 | `--config PATH` | Read the configuration from `PATH`. |
 | `--debug` | Log each request, its status and duration to stderr. The key is never logged. |

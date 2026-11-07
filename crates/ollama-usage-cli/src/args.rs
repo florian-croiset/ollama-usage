@@ -36,7 +36,8 @@ pub(crate) struct Args {
     #[arg(long, short)]
     pub(crate) quiet: bool,
 
-    /// Exit with code 1 when a quota window is at or above PCT percent.
+    /// Exit with code 1 when a quota window is at or above PCT percent, and say
+    /// which on stderr.
     #[arg(long, value_name = "PCT", value_parser = percent)]
     pub(crate) alert: Option<f64>,
 

@@ -87,6 +87,14 @@ fn execute(args: &Args) -> Outcome {
         Ok(report) => {
             if !args.quiet {
                 show(&report, args.json);
+                if let Some(threshold) = args.alert {
+                    for (kind, used_pct) in outcome::reached(&report, threshold) {
+                        eprintln!(
+                            "{} {kind} usage at {used_pct:.1}%, threshold {threshold}%",
+                            "alert:".red().bold()
+                        );
+                    }
+                }
             }
             Outcome::of(&report, args.alert)
         }

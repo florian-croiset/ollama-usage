@@ -29,7 +29,7 @@ or later is still required. The `notify` extra no longer exists.
 | 0.3 | 1.0 |
 | --- | --- |
 | `--api-key`, `--json`, `--quiet`, `--debug`, `--version` | unchanged |
-| `--alert PCT`: above `PCT` | at or above `PCT` |
+| `--alert PCT`: above `PCT`, `⚠️  Warning: usage exceeds PCT%` | at or above `PCT`, `alert: monthly usage at 85.0%, threshold 80%` for each window reached |
 | `--cookie`, `--browser` | removed: use an API key |
 | `--watch`, `--interval` | removed |
 | `--notify`, `--notify-threshold` | removed |
