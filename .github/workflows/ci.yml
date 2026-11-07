@@ -88,7 +88,7 @@ jobs:
           VIRTUAL_ENV="$PWD/.venv" .venv/bin/maturin develop
       - name: Lint
         run: |
-          ruff check python
-          ruff format --check python
+          ruff check python examples
+          ruff format --check python examples
       - name: Test
         run: python -m unittest discover -s python/tests -v

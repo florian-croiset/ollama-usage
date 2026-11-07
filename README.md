@@ -164,6 +164,11 @@ else:
 The client releases the GIL while it waits, and keeps the plan name for a day, so
 reuse one client rather than creating one per call.
 
+[`examples/`](examples/) has complete scripts: the quota windows
+([`quota.py`](examples/quota.py)), the usage per model ([`models.py`](examples/models.py)),
+an alert on usage or on the included credits left ([`alert.py`](examples/alert.py)), and
+polling that respects the rate limit ([`watch.py`](examples/watch.py)).
+
 ## Rust
 
 ```toml

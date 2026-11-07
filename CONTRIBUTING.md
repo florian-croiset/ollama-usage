@@ -10,6 +10,7 @@ Thank you for your interest in **ollama-usage**.
 | `crates/ollama-usage-cli` | The `ollama-usage` command |
 | `crates/ollama-usage-py` | The native module of the Python package |
 | `python/ollama_usage` | The Python API, built on the report's JSON form |
+| `examples/` | Python scripts using the package, run without a key by the tests |
 | `schemas/` | The JSON schema of the report |
 | `fixtures/api/` | API responses used by the tests |
 | `fixtures/reports/` | The reports expected from them, shared by the Rust and Python tests |
@@ -36,7 +37,7 @@ CI runs all of these; run them before opening a pull request.
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-ruff check python && ruff format --check python
+ruff check python examples && ruff format --check python examples
 python -m unittest discover -s python/tests
 ```
 

@@ -26,6 +26,8 @@ package. See [MIGRATING.md](MIGRATING.md) for every change from 0.3.
 - `RateLimitedError` with the delay ollama.com asked for
 - `FORCE_COLOR` forces colours
 - A Rust crate, `ollama-usage`
+- Python examples in `examples/`: quota, usage per model, an alert on usage or
+  credits, and polling
 
 ### Changed
 - The Python API is a client returning read-only dataclasses:
