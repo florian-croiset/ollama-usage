@@ -10,13 +10,15 @@ import argparse
 import os
 import sys
 
-from ollama_usage import Client, OllamaUsageError
+from ollama_usage import Client, ModelUsage, OllamaUsageError, OtherUsage
 
 ROW = "{:<{width}}  {:>8}  {:>10}  {:>10}  {:>10}"
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description="Print the requests, cost and tokens of each model."
+    )
     parser.add_argument("range", nargs="?", default="30d", choices=["24h", "7d", "30d"])
     args = parser.parse_args()
 
@@ -33,7 +35,7 @@ def main() -> int:
         print("error: /api/usage did not answer", file=sys.stderr)
         return 1
 
-    rows = [(m.model, m) for m in usage.models]
+    rows: list[tuple[str, ModelUsage | OtherUsage]] = [(m.model, m) for m in usage.models]
     if usage.other:
         rows.append(("(other models)", usage.other))
     rows.sort(key=lambda row: row[1].cost_usd, reverse=True)

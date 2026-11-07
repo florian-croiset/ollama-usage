@@ -84,11 +84,12 @@ jobs:
           python -m venv .venv
           echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-          .venv/bin/pip install maturin ruff
+          .venv/bin/pip install maturin pyright ruff
           VIRTUAL_ENV="$PWD/.venv" .venv/bin/maturin develop
       - name: Lint
         run: |
           ruff check python examples
           ruff format --check python examples
+          pyright
       - name: Test
         run: python -m unittest discover -s python/tests -v

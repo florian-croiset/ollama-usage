@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 
-from . import _errors, _ollama_usage
+from ._errors import AuthError, from_native
+from ._ollama_usage import Client as NativeClient
+from ._ollama_usage import FetchError
 from ._report import Range, Report
 
 _KEYS_URL = "https://ollama.com/settings/keys"
@@ -31,8 +33,8 @@ class Client:
     def __init__(self, api_key: str, *, timeout: float = 10.0) -> None:
         key = api_key.strip()
         if not key:
-            raise _errors.AuthError(f"an API key is required: create one at {_KEYS_URL}")
-        self._native = _ollama_usage.Client(key, timeout)
+            raise AuthError(f"an API key is required: create one at {_KEYS_URL}")
+        self._native = NativeClient(key, timeout)
 
     def fetch(self, range: Range = "30d") -> Report:
         """Fetches the quota, the credits, the usage over ``range`` and the plan name.
@@ -54,8 +56,8 @@ class Client:
         """
         try:
             payload = self._native.fetch_json(range)
-        except _ollama_usage.FetchError as error:
-            raise _errors.from_native(*error.args) from None
+        except FetchError as error:
+            raise from_native(*error.args) from None
         return Report.from_dict(json.loads(payload))
 
     def __repr__(self) -> str:

@@ -22,7 +22,9 @@ MINIMUM_INTERVAL = 30
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description="Poll the quota and print a line whenever a window moves."
+    )
     parser.add_argument("--every", type=int, default=60, help="seconds between polls")
     args = parser.parse_args()
     interval = max(args.every, MINIMUM_INTERVAL)

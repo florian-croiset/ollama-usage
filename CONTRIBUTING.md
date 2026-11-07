@@ -25,7 +25,7 @@ git clone https://github.com/florian-croiset/ollama-usage
 cd ollama-usage
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install maturin ruff
+pip install maturin pyright ruff
 maturin develop                    # builds the extension into the virtualenv
 ```
 
@@ -38,6 +38,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ruff check python examples && ruff format --check python examples
+pyright                            # strict type checking
 python -m unittest discover -s python/tests
 ```
 

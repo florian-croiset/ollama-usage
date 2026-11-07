@@ -22,7 +22,9 @@ def notify(message: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description="Warn when a quota window is nearly used, or the included credits run low."
+    )
     parser.add_argument("--percent", type=float, default=80.0, help="window usage, in percent")
     parser.add_argument("--credits", type=float, default=0.5, help="included credits left, in $")
     args = parser.parse_args()
