@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+
+## [1.0.0-alpha.2] - 2026-11-07
+
 ### Changed
 - The Python package is installed as `ollama-cloud-usage` and imported as
   `ollama_cloud_usage`; the command keeps its name, `ollama-usage`. An unrelated

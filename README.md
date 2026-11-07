@@ -39,11 +39,14 @@ for Python 3.10 and later on Linux, macOS and Windows, from the latest
 [release](https://github.com/florian-croiset/ollama-usage/releases):
 
 ```bash
-pip install --no-index --find-links https://github.com/florian-croiset/ollama-usage/releases/expanded_assets/v1.0.0-alpha.1 ollama-usage==1.0.0a1
+pip install --no-index --find-links https://github.com/florian-croiset/ollama-usage/releases/expanded_assets/v1.0.0-alpha.2 ollama-cloud-usage==1.0.0a2
 ```
 
-`--no-index` matters: another project, unrelated to this one, is published on
-PyPI as `ollama-usage`, and without it pip would install that one instead.
+The package is `ollama-cloud-usage`, imported as `ollama_cloud_usage`; the
+command is `ollama-usage`. `--no-index` keeps pip off PyPI, where an unrelated
+project is published as `ollama-usage` with the same command name: do not install
+both in the same environment. Coming from 0.x, `pip uninstall ollama-usage`
+first.
 
 Or from the repository, which compiles the package and so needs a Rust toolchain
 ([rustup](https://rustup.rs)):
