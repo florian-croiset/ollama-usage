@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/ollama-usage", "crates/ollama-usage-cli"]
+members = ["crates/ollama-usage", "crates/ollama-usage-cli", "crates/ollama-usage-py"]
 
 [workspace.package]
 version = "1.0.0-alpha.1"

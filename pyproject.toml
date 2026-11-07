@@ -1,0 +1,50 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "ollama-usage"
+description = "Read your Ollama Cloud quota, credits and per-model usage from the official API."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Florian Croiset" }]
+keywords = ["ollama", "quota", "usage", "llm", "api"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Rust",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/florian-croiset/ollama-usage"
+Repository = "https://github.com/florian-croiset/ollama-usage"
+Issues = "https://github.com/florian-croiset/ollama-usage/issues"
+Changelog = "https://github.com/florian-croiset/ollama-usage/blob/main/CHANGELOG.md"
+
+[tool.maturin]
+manifest-path = "crates/ollama-usage-py/Cargo.toml"
+python-source = "python"
+module-name = "ollama_usage._ollama_usage"
+features = ["extension-module"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "D"]
+ignore = ["D105", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"python/tests/*" = ["D"]
