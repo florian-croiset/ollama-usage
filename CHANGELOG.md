@@ -29,6 +29,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   credits balance, and legacy plans get `session` / `weekly` with their reset dates.
   If `/api/balance` can't be read, the spend from `/api/usage` is still returned (and
   `get_usage_with_fallback` reads the quota from the dashboard)
+- With an API key `plan` is filled from `ollama.com/api/me` (undocumented, best
+  effort): fetched once and cached in memory for 24 hours (1 hour after a failure),
+  only its `Plan` field is read and nothing of that response is logged. Any error
+  leaves `plan` as `None` without affecting the rest of the result
 - `/api/usage` is queried over 30 days grouped by model: `spend` covers the last 30 days
   (`period` `"30d"`) and `monthly.models` has each model's requests, cost and share
 - The CLI shows each model's cost, and the widget labels the spend with its period

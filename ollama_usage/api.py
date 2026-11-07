@@ -11,20 +11,26 @@ Two documented endpoints are combined:
   USD over the last 30 days, grouped by model. It gives ``spend`` and the per-model
   breakdown.
 
-The API does not expose the plan name (``plan`` is None). Since 2026-10-07
-``/api/usage`` alone reports no quota; when ``/api/balance`` can't be read either,
-:func:`get_usage_with_fallback` reads the percentage from the dashboard.
+The plan name comes from ``/api/me`` (undocumented, best effort): it is called once
+and cached in memory for 24 hours (1 hour after a failure), and ``plan`` is None
+when it can't be read. Only its ``Plan`` field is kept; the rest of the response
+(e-mail, name...) is neither stored nor logged.
+
+Since 2026-10-07 ``/api/usage`` alone reports no quota; when ``/api/balance`` can't
+be read either, :func:`get_usage_with_fallback` reads the percentage from the dashboard.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import time
 import urllib.error
 import urllib.request
 
-from ollama_usage.exceptions import AuthError, NetworkError, ParseError
+from ollama_usage.exceptions import AuthError, NetworkError, OllamaUsageError, ParseError
 from ollama_usage.scraper import _SSL_CONTEXT, _TIMEOUT, PERIOD_KEYS
 
 logger = logging.getLogger(__name__)
@@ -33,6 +39,11 @@ _USAGE_API_URL = "https://ollama.com/api/usage"
 # 30 days: the reporting window closest to the monthly quota period (24h / 7d / 30d).
 _USAGE_QUERY_URL = _USAGE_API_URL + "?range=30d&group_by=model"
 _BALANCE_API_URL = "https://ollama.com/api/balance"
+_ME_API_URL = "https://ollama.com/api/me"  # undocumented, POST only
+_PLAN_TTL = 24 * 3600     # seconds a plan name is reused
+_PLAN_RETRY = 3600        # seconds before retrying after a failure
+# sha256(api key) -> (monotonic expiry, plan name or None)
+_plan_cache: dict[str, tuple[float, str | None]] = {}
 _API_KEY_ENV = "OLLAMA_API_KEY"
 
 
@@ -42,11 +53,13 @@ def get_api_key_env() -> str | None:
     return value or None
 
 
-def _fetch_json(api_key: str, url: str = _USAGE_API_URL) -> dict:
-    """GET an API endpoint with the API key and return the decoded JSON body."""
+def _fetch_json(api_key: str, url: str = _USAGE_API_URL, method: str = "GET") -> dict:
+    """Call an API endpoint with the API key and return the decoded JSON body."""
     logger.debug("Fetching %s (api key: ***)", url)
     req = urllib.request.Request(
         url,
+        data=b"" if method == "POST" else None,
+        method=method,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Accept": "application/json",
@@ -250,6 +263,27 @@ def parse_api_response(payload: dict) -> dict:
     return data
 
 
+def _get_plan(api_key: str) -> str | None:
+    """Plan name from /api/me ("free", "pro"...), cached per key; None if unavailable."""
+    cache_key = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+    now = time.monotonic()
+    cached = _plan_cache.get(cache_key)
+    if cached is not None and cached[0] > now:
+        return cached[1]
+
+    plan = None
+    try:
+        raw = _fetch_json(api_key, _ME_API_URL, method="POST").get("Plan")
+    except OllamaUsageError as e:
+        # Never log the body: it holds the account's e-mail and name.
+        logger.debug("Plan unavailable from %s (%s)", _ME_API_URL, type(e).__name__)
+    else:
+        if isinstance(raw, str) and raw.strip():
+            plan = " ".join(raw.split()).lower()
+    _plan_cache[cache_key] = (now + (_PLAN_TTL if plan else _PLAN_RETRY), plan)
+    return plan
+
+
 def _empty_api_data() -> dict:
     return {"plan": None, **{key: None for key in PERIOD_KEYS},
             "credits_balance": None, "spend": None, "source": "api"}
@@ -277,7 +311,8 @@ def get_usage_api(api_key: str) -> dict:
 
     The quota comes from /api/balance, the spend and per-model breakdown from
     /api/usage. If one of them can't be read the other one is still returned; an
-    invalid key (AuthError) or both failing raises.
+    invalid key (AuthError) or both failing raises. The plan name comes from the
+    cached /api/me call and is None when it can't be read.
     """
     errors: list[Exception] = []
 
@@ -299,6 +334,7 @@ def get_usage_api(api_key: str) -> dict:
     if balance is not None:
         _merge_balance(data, balance)
     data.pop("models", None)
+    data["plan"] = _get_plan(api_key)
     return data
 
 
@@ -308,7 +344,8 @@ def get_usage_with_fallback(api_key: str, cookie: str | None = None) -> dict:
     The API alone no longer gives a percentage (see the module docstring). When it
     returns none and a session cookie is available — the one passed in, or the one
     found in a browser — the dashboard supplies the quota and the API's spend is
-    kept (the month's spend from the web report is used when the API has none). Without any cookie the API-only result is returned unchanged.
+    kept (the month's spend from the web report is used when the API has none).
+    Without any cookie the API-only result is returned unchanged.
     """
     from ollama_usage.cookie import get_cookie_auto, get_cookie_env
     from ollama_usage.exceptions import OllamaUsageError

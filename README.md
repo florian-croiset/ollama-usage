@@ -16,12 +16,13 @@ Two data sources are supported:
 | Reset date | ✅ | ❌ (not shown on the dashboard since 2026-11) |
 | Credits balance | ✅ | ✅ |
 | Spend | ✅ last 30 days | ✅ current calendar month |
-| Plan name | ❌ | ✅ |
+| Plan name | ✅ (`/api/me`, undocumented, best effort) | ✅ |
 
 Source selection in the CLI: `--api-key` → `--cookie` / `--browser` → `OLLAMA_API_KEY` → `OLLAMA_BROWSER_COOKIE` → Firefox auto-detection.  
 In short: set `OLLAMA_API_KEY` and the official API is queried (quota from `/api/balance`, spend and per-model breakdown from `/api/usage`); the session cookie is only read when `/api/balance` can't be. Without a key, only the session cookie is used.
 
-> ℹ️ The API allows 10 requests per minute per user; each refresh makes 2, so `--watch` / the widget refresh at most every 15 s with an API key.
+> ℹ️ The API allows 10 requests per minute per user; each refresh makes 2, so `--watch` / the widget refresh at most every 15 s with an API key.  
+> The plan name comes from `/api/me`, which is not documented: it is fetched once and kept in memory for 24 hours (retried after 1 hour if it failed), and only its `Plan` field is read — the rest of that response (e-mail, name) is never stored or logged. If Ollama removes it, `plan` is `null` and nothing else changes.
 
 ---
 
@@ -188,7 +189,7 @@ Both sources return the same keys; fields a source can't provide are `null`.
 
 | Key | Description | API key | Cookie |
 |-----|-------------|:-------:|:------:|
-| `plan` | `free`, `pro`, `max`… | `null` | ✅ |
+| `plan` | `free`, `pro`, `max`… (`null` if it can't be read) | ✅ | ✅ |
 | `session` / `weekly` / `monthly` | quota object, or `null` if not part of your plan | ✅ | ✅ |
 | `…used_pct` | percentage of the quota used | ✅ | ✅ |
 | `…resets_at` | ISO 8601 reset date (when the included usage refills) | ✅ | `null` |
@@ -256,7 +257,7 @@ print(usage["monthly"]["used_pct"])         # 18.4
 print(usage["monthly"]["resets_at"])        # "2026-05-15T08:30:00.123456Z"
 print(usage["credits_balance"])             # 5.0
 print(usage["spend"]["cost_usd"])           # 1.2 (last 30 days)
-# plan is None: the API does not report it.
+print(usage["plan"])                        # "free" (from /api/me, None if unavailable)
 ```
 
 If `/api/balance` can't be read, the dashboard can supply the quota (it looks for
@@ -372,7 +373,8 @@ Chromium-based browsers encrypt their cookies (App-Bound Encryption on Windows s
 - [x] Per-model usage breakdown (`session.models`, `weekly.models`)
 - [x] Credit-based plans (`monthly`, `credits_balance`)
 - [x] Official usage API with an API key (`ollama.com/api/balance` + `/api/usage`, `--api-key`, `OLLAMA_API_KEY`)
-- [ ] Drop scraping once the official API exposes the plan name
+- [x] Plan name with an API key (`/api/me`, cached in memory for 24 h)
+- [ ] Drop scraping once a documented endpoint exposes the plan name
 
 ---
 

@@ -43,6 +43,14 @@ LEGACY_PAYLOAD = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _clear_plan_cache():
+    from ollama_usage import api
+    api._plan_cache.clear()
+    yield
+    api._plan_cache.clear()
+
+
 def _response(body: bytes) -> MagicMock:
     resp = MagicMock()
     resp.read.return_value = body
@@ -236,7 +244,7 @@ class TestGetUsageApi:
         with patch("urllib.request.urlopen", return_value=_response(body)) as urlopen:
             data = get_usage_api("sk-test")
         assert data["monthly"]["used_pct"] == 0.7  # no balance in that payload: kept
-        usage_req, balance_req = (c[0][0] for c in urlopen.call_args_list)
+        usage_req, balance_req = (c[0][0] for c in urlopen.call_args_list[:2])
         assert usage_req.full_url == "https://ollama.com/api/usage?range=30d&group_by=model"
         assert balance_req.full_url == "https://ollama.com/api/balance"
         assert usage_req.get_header("Authorization") == "Bearer sk-test"
@@ -432,7 +440,12 @@ class TestRequestHeaders:
         assert kwargs["context"] is _SSL_CONTEXT
 
     def test_get_method(self) -> None:
-        assert self._request()[0][0].get_method() == "GET"
+        with patch("urllib.request.urlopen", return_value=_response(json.dumps(FREE_PAYLOAD).encode())) as urlopen:
+            get_usage_api("sk-test")
+        methods = {c[0][0].full_url: c[0][0].get_method() for c in urlopen.call_args_list}
+        assert methods["https://ollama.com/api/balance"] == "GET"
+        assert methods["https://ollama.com/api/usage?range=30d&group_by=model"] == "GET"
+        assert methods["https://ollama.com/api/me"] == "POST"
 
     def test_401_does_not_leak_key(self) -> None:
         with patch("urllib.request.urlopen", side_effect=_http_error(401)):
@@ -484,11 +497,14 @@ GROUPED_USAGE_PAYLOAD = {
 }
 
 
-def _api_responses(usage=GROUPED_USAGE_PAYLOAD, balance=BALANCE_PAYLOAD):
-    """urlopen side effect: /api/usage first, then /api/balance (payload or exception)."""
+ME_PAYLOAD = {"ID": "x", "Email": "someone@example.com", "Name": "someone", "Plan": "Pro"}
+
+
+def _api_responses(usage=GROUPED_USAGE_PAYLOAD, balance=BALANCE_PAYLOAD, me=ME_PAYLOAD):
+    """urlopen side effect: /api/usage, /api/balance, then /api/me (payload or exception)."""
     def one(item):
         return item if isinstance(item, Exception) else _response(json.dumps(item).encode())
-    return [one(usage), one(balance)]
+    return [one(usage), one(balance), one(me)]
 
 
 class TestParseBalance:
@@ -583,7 +599,7 @@ class TestGetUsageApiWithBalance:
             "qwen3-coder:480b", "gpt-oss:120b", "glm-4.6"]
         assert data["credits_balance"] == 4.25
         assert data["spend"]["cost_usd"] == 0.8
-        assert data["plan"] is None
+        assert data["plan"] == "pro"
         assert data["source"] == "api"
         assert "models" not in data
 
@@ -643,3 +659,100 @@ class TestGetUsageApiWithBalance:
         web.assert_called_once_with("cookie")
         assert data["monthly"]["used_pct"] == 30.0
         assert data["spend"]["cost_usd"] == 0.8
+
+
+class TestPlanFromMe:
+
+    def test_request_is_a_post_with_the_key(self) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses()) as urlopen:
+            get_usage_api("sk-test")
+        me_req = urlopen.call_args_list[2][0][0]
+        assert me_req.full_url == "https://ollama.com/api/me"
+        assert me_req.get_method() == "POST"
+        assert me_req.get_header("Authorization") == "Bearer sk-test"
+
+    @pytest.mark.parametrize("raw,expected", [("free", "free"), ("Pro", "pro"),
+                                              ("  Pro  Max ", "pro max"), ("", None),
+                                              ("   ", None), (None, None), (3, None)])
+    def test_plan_normalised(self, raw, expected) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses(me={"Plan": raw})):
+            assert get_usage_api("sk-test")["plan"] == expected
+
+    def test_missing_plan_field(self) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses(me={"ID": "x"})):
+            assert get_usage_api("sk-test")["plan"] is None
+
+    def test_cached_between_calls(self) -> None:
+        responses = _api_responses() + _api_responses()[:2]
+        with patch("urllib.request.urlopen", side_effect=responses) as urlopen:
+            first = get_usage_api("sk-test")
+            second = get_usage_api("sk-test")
+        assert first["plan"] == second["plan"] == "pro"
+        assert urlopen.call_count == 5
+        urls = [c[0][0].full_url for c in urlopen.call_args_list]
+        assert urls.count("https://ollama.com/api/me") == 1
+
+    def test_cache_is_per_key(self) -> None:
+        responses = _api_responses() + _api_responses(me={"Plan": "max"})
+        with patch("urllib.request.urlopen", side_effect=responses):
+            assert get_usage_api("sk-one")["plan"] == "pro"
+            assert get_usage_api("sk-two")["plan"] == "max"
+
+    def test_cache_expires_after_a_day(self) -> None:
+        from ollama_usage import api
+        responses = _api_responses() + _api_responses(me={"Plan": "max"})
+        with patch("urllib.request.urlopen", side_effect=responses), \
+             patch.object(api.time, "monotonic", side_effect=[1000.0, 1000.0 + 24 * 3600 + 1]):
+            assert get_usage_api("sk-test")["plan"] == "pro"
+            assert get_usage_api("sk-test")["plan"] == "max"
+
+    @pytest.mark.parametrize("error", [_http_error(405), _http_error(404), _http_error(429),
+                                       _http_error(401), urllib.error.URLError("down")])
+    def test_failure_gives_none_and_keeps_the_rest(self, error) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses(me=error)):
+            data = get_usage_api("sk-test")
+        assert data["plan"] is None
+        assert data["monthly"]["used_pct"] == 25.0
+
+    def test_invalid_json_gives_none(self) -> None:
+        responses = _api_responses()[:2] + [_response(b"<html>")]
+        with patch("urllib.request.urlopen", side_effect=responses):
+            assert get_usage_api("sk-test")["plan"] is None
+
+    def test_failure_not_retried_within_an_hour(self) -> None:
+        from ollama_usage import api
+        responses = _api_responses(me=_http_error(503)) + _api_responses()[:2]
+        with patch("urllib.request.urlopen", side_effect=responses) as urlopen, \
+             patch.object(api.time, "monotonic", side_effect=[0.0, 3599.0]):
+            assert get_usage_api("sk-test")["plan"] is None
+            assert get_usage_api("sk-test")["plan"] is None
+        assert urlopen.call_count == 5
+
+    def test_failure_retried_after_an_hour(self) -> None:
+        from ollama_usage import api
+        responses = _api_responses(me=_http_error(503)) + _api_responses()
+        with patch("urllib.request.urlopen", side_effect=responses), \
+             patch.object(api.time, "monotonic", side_effect=[0.0, 3601.0]):
+            assert get_usage_api("sk-test")["plan"] is None
+            assert get_usage_api("sk-test")["plan"] == "pro"
+
+    def test_not_called_when_both_endpoints_fail(self) -> None:
+        responses = [_http_error(503), _http_error(503)]
+        with patch("urllib.request.urlopen", side_effect=responses) as urlopen:
+            with pytest.raises(NetworkError):
+                get_usage_api("sk-test")
+        assert urlopen.call_count == 2
+
+    def test_account_details_never_logged(self, caplog) -> None:
+        with patch("urllib.request.urlopen", side_effect=_api_responses()):
+            with caplog.at_level(logging.DEBUG):
+                get_usage_api("super-secret-api-key")
+        logged = " ".join(r.getMessage() for r in caplog.records)
+        assert "someone@example.com" not in logged
+        assert "super-secret-api-key" not in logged
+
+    def test_raw_key_not_kept_in_cache(self) -> None:
+        from ollama_usage import api
+        with patch("urllib.request.urlopen", side_effect=_api_responses()):
+            get_usage_api("super-secret-api-key")
+        assert all("super-secret-api-key" not in k for k in api._plan_cache)

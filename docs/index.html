@@ -141,7 +141,7 @@ Monthly : <span class="ok">18.4%</span> used — reset at 2026-05-15T08:30:00.12
     glm-4.6                  210 req  ( 14.7%)  $0.18
 Credits : $5.00
 Spend   : $1.20 (30d)</code></pre>
-    <p>With an API key the quota and its reset date come from <code>/api/balance</code>, the models and spend over the last 30 days from <code>/api/usage</code>. With the session cookie you also get the plan name, but no reset date: the dashboard no longer shows it.</p>
+    <p>With an API key the quota and its reset date come from <code>/api/balance</code>, the models and spend over the last 30 days from <code>/api/usage</code>. The plan name comes from <code>/api/me</code>, fetched once and cached. The session cookie gives the same quota without a reset date: the dashboard no longer shows it.</p>
   </section>
 
   <section>
