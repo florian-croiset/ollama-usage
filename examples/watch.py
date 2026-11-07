@@ -33,6 +33,8 @@ def main() -> int:
     if not key.strip():
         print("Set OLLAMA_API_KEY to a key from https://ollama.com/settings/keys", file=sys.stderr)
         return 1
+    # One client for the whole run: it keeps the plan name for a day, saving a
+    # request per poll.
     client = Client(key)
     last: dict[str, float] = {}
 
@@ -40,11 +42,15 @@ def main() -> int:
         while True:
             wait = interval
             try:
+                # The windows do not depend on the range; the shortest keeps the
+                # response small.
                 report = client.fetch("24h")
             except AuthError as error:
                 print(f"error: {error}", file=sys.stderr)
                 return 1
             except RateLimitedError as error:
+                # 10 requests per minute per user, shared by every key and device:
+                # wait at least as long as ollama.com asks.
                 wait = max(interval, int(error.retry_after or 0))
                 print(f"rate-limited, next poll in {wait} s", file=sys.stderr)
             except OllamaUsageError as error:
