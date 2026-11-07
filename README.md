@@ -133,7 +133,7 @@ ollama-usage --quiet --alert 90 || notify-send "Ollama quota above 90 %, or the 
 
 ```python
 import os
-from ollama_usage import Client
+from ollama_cloud_usage import Client
 
 client = Client(os.environ["OLLAMA_API_KEY"])
 report = client.fetch()            # or fetch("24h"), fetch("7d")
@@ -153,7 +153,7 @@ The report is made of read-only dataclasses that mirror the
 A fetch raises only when no report can be built at all:
 
 ```python
-from ollama_usage import ApiError, AuthError, NetworkError, RateLimitedError
+from ollama_cloud_usage import ApiError, AuthError, NetworkError, RateLimitedError
 
 try:
     report = client.fetch()

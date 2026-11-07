@@ -9,7 +9,7 @@ Thank you for your interest in **ollama-usage**.
 | `crates/ollama-usage` | The Rust core: HTTP client, response parsing, the report |
 | `crates/ollama-usage-cli` | The `ollama-usage` command |
 | `crates/ollama-usage-py` | The native module of the Python package |
-| `python/ollama_usage` | The Python API, built on the report's JSON form |
+| `python/ollama_cloud_usage` | The Python API, built on the report's JSON form |
 | `examples/` | Python scripts using the package, run without a key by the tests |
 | `schemas/` | The JSON schema of the report |
 | `fixtures/api/` | API responses used by the tests |

@@ -18,16 +18,24 @@ report is then partial.
 
 ## Installation
 
-`pip install git+https://github.com/florian-croiset/ollama-usage` still installs
-the library and the `ollama-usage` command, but now compiles Rust: install a
-toolchain with [rustup](https://rustup.rs), or take a prebuilt wheel from the
-[releases](https://github.com/florian-croiset/ollama-usage/releases) as the
-[README](README.md#installation) shows. Python 3.10 or later is still required.
-The `notify` extra no longer exists.
+The package is now called **`ollama-cloud-usage`**, and is imported as
+`ollama_cloud_usage`; the command keeps its name, `ollama-usage`. An unrelated
+project is published on PyPI as `ollama-usage`, with the same module and command
+names, hence the new name. Remove 0.x first, since both own the same files:
 
-Do not run `pip install -U ollama-usage` without `--no-index`: another,
-unrelated project is published on PyPI under that name, and pip would replace
-this package with it.
+```bash
+pip uninstall ollama-usage
+```
+
+Then install a prebuilt wheel from the
+[releases](https://github.com/florian-croiset/ollama-usage/releases) as the
+[README](README.md#installation) shows, or
+`pip install git+https://github.com/florian-croiset/ollama-usage`, which now
+compiles Rust and so needs a toolchain from [rustup](https://rustup.rs). Python
+3.10 or later is still required. The `notify` extra no longer exists.
+
+Never `pip install ollama-usage` from PyPI: that installs the other project, and
+its `ollama-usage` command replaces this one.
 
 ## Command line
 
@@ -101,7 +109,7 @@ for key, period in iter_periods(usage):
 print(usage["credits_balance"])
 
 # 1.0
-from ollama_usage import Client
+from ollama_cloud_usage import Client
 
 report = Client(api_key).fetch()
 for name, window in report.windows.items():
@@ -111,12 +119,13 @@ print(report.credits.purchased_balance_usd)
 
 | 0.3 | 1.0 |
 | --- | --- |
+| `pip install … ollama-usage`, `import ollama_usage` | `pip install … ollama-cloud-usage`, `import ollama_cloud_usage` |
 | `get_usage_api(key)` | `Client(key).fetch()` |
 | `get_usage(cookie)`, `get_usage_with_fallback(key, cookie)` | removed |
 | `iter_periods(usage)` | `report.windows.items()` |
 | `usage["…"]` | attributes, e.g. `report.windows.monthly.used_pct`; `report.to_dict()` gives the JSON form |
 | `ollama_usage.cookie`, `ollama_usage.widget`, `ollama_usage.notify` | removed |
-| `AuthError`, `NetworkError`, `OllamaUsageError` | unchanged, imported from `ollama_usage` |
+| `AuthError`, `NetworkError`, `OllamaUsageError` | unchanged, imported from `ollama_cloud_usage` |
 | `ParseError` | `ApiError` |
 | | `RateLimitedError`, with `retry_after` |
 | `BrowserNotFoundError`, `UnsupportedOSError` | removed |

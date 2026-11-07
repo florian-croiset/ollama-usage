@@ -8,7 +8,7 @@ def run(*arguments: str) -> subprocess.CompletedProcess[str]:
     env = {k: v for k, v in os.environ.items() if k != "OLLAMA_API_KEY"}
     env["NO_COLOR"] = "1"
     return subprocess.run(
-        [sys.executable, "-m", "ollama_usage", *arguments],
+        [sys.executable, "-m", "ollama_cloud_usage", *arguments],
         capture_output=True,
         text=True,
         env=env,

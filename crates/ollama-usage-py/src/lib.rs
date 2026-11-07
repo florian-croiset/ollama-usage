@@ -1,5 +1,6 @@
-//! Native part of the `ollama_usage` Python package. It hands the report over as
-//! schema 1.0 JSON; the typed Python API lives in `python/ollama_usage`. It also
+//! Native part of the `ollama_cloud_usage` Python package. It hands the report
+//! over as schema 1.0 JSON; the typed Python API lives in
+//! `python/ollama_cloud_usage`. It also
 //! runs the command-line tool for the package's `ollama-usage` entry point.
 
 use std::time::Duration;
@@ -17,7 +18,7 @@ create_exception!(
 );
 
 /// A client for one API key.
-#[pyclass(frozen, name = "Client", module = "ollama_usage._ollama_usage")]
+#[pyclass(frozen, name = "Client", module = "ollama_cloud_usage._ollama_usage")]
 #[derive(Debug)]
 struct PyClient {
     inner: Client,

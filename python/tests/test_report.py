@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ollama_usage import Report
+from ollama_cloud_usage import Report
 
 REPORTS = Path(__file__).resolve().parents[2] / "fixtures" / "reports"
 

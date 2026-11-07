@@ -2,7 +2,7 @@
 
 Example:
     >>> import os
-    >>> from ollama_usage import Client
+    >>> from ollama_cloud_usage import Client
     >>> report = Client(os.environ["OLLAMA_API_KEY"]).fetch()
     >>> report.windows.monthly.used_pct
     12.5
