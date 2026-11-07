@@ -1,397 +1,273 @@
 # ollama-usage
 
-> Programmatic access to your [Ollama Cloud](https://ollama.com) usage quota — CLI, Python library, notifications and desktop widget.
+> Your [Ollama Cloud](https://ollama.com) quota, credits and per-model usage, from
+> the official API — in the terminal, in Python, in Rust, or as JSON.
 
-![CI](https://github.com/florian-croiset/ollama-usage/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/florian-croiset/ollama-usage/actions/workflows/ci.yml/badge.svg)](https://github.com/florian-croiset/ollama-usage/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Two data sources are supported:
+```console
+$ ollama-usage
+Plan     free
+Monthly  [███░░░░░░░░░░░░░░░░░]   12.5%   resets in 21d 12h
+Credits  included $4.38 / $5.00  ·  purchased $0.00
+Usage    last 30 days  ·  120 req  ·  $0.80
+           model-a       60 req  $0.40   50.0%
+           model-b       40 req  $0.30   37.5%
+           other models  20 req  $0.10   12.5%
+```
 
-| | **API key** | **Session cookie** |
-|---|---|---|
-| Endpoint | [`ollama.com/api/balance`](https://docs.ollama.com/api/balance) + [`ollama.com/api/usage`](https://docs.ollama.com/api/cloud-usage) | scrapes `ollama.com/dashboard` and the usage report of `ollama.com/settings` |
-| Credentials | API key from [ollama.com/settings/keys](https://ollama.com/settings/keys) | auto-detected in Firefox, or copied manually from any browser |
-| Usage % + per-model requests, share and cost | ✅ | ✅ |
-| Reset date | ✅ | ❌ (not shown on the dashboard since 2026-11) |
-| Credits balance | ✅ | ✅ |
-| Spend | ✅ last 30 days | ✅ current calendar month |
-| Plan name | ✅ (`/api/me`, undocumented, best effort) | ✅ |
+One API key is all it needs. Each run reads two documented endpoints and one
+undocumented one:
 
-Source selection in the CLI: `--api-key` → `--cookie` / `--browser` → `OLLAMA_API_KEY` → `OLLAMA_BROWSER_COOKIE` → Firefox auto-detection.  
-In short: set `OLLAMA_API_KEY` and the official API is queried (quota from `/api/balance`, spend and per-model breakdown from `/api/usage`); the session cookie is only read when `/api/balance` can't be. Without a key, only the session cookie is used.
+| What | Where it comes from |
+| --- | --- |
+| Monthly usage, its start and reset time (current plans) | [`/api/balance`](https://docs.ollama.com/api/balance): included credits used out of the allowance |
+| Session and weekly windows (plans from before the [2026-08-31 pricing change](https://ollama.com/blog/transparent-pricing)) | [`/api/balance`](https://docs.ollama.com/api/balance) |
+| Included and purchased credit balances | [`/api/balance`](https://docs.ollama.com/api/balance) |
+| Requests, cost and tokens, in total and for the ten most expensive models, over 24 hours, 7 days or 30 days | [`/api/usage`](https://docs.ollama.com/api/cloud-usage) |
+| Plan name | `/api/me` (undocumented, best effort, only its `Plan` field is read) |
 
-> ℹ️ The API allows 10 requests per minute per user; each refresh makes 2, so `--watch` / the widget refresh at most every 15 s with an API key.  
-> The plan name comes from `/api/me`, which is not documented: it is fetched once and kept in memory for 24 hours (retried after 1 hour if it failed), and only its `Plan` field is read — the rest of that response (e-mail, name) is never stored or logged. If Ollama removes it, `plan` is `null` and nothing else changes.
-
----
+Since version 1.0 nothing is scraped from ollama.com pages and no browser cookie
+is read. Coming from 0.x? See [MIGRATING.md](MIGRATING.md).
 
 ## Installation
+
+**Python package**, which also installs the `ollama-usage` command:
+
 ```bash
 pip install git+https://github.com/florian-croiset/ollama-usage
 ```
 
-### With desktop notifications support
+This compiles the package, so it needs a Rust toolchain
+([rustup](https://rustup.rs)). Each [release](https://github.com/florian-croiset/ollama-usage/releases)
+also provides prebuilt wheels for Python 3.10 and later, and standalone binaries
+of the command, which need nothing else.
+
+**Command only**, with Cargo:
+
 ```bash
-pip install "ollama-usage[notify] @ git+https://github.com/florian-croiset/ollama-usage"
+cargo install --git https://github.com/florian-croiset/ollama-usage ollama-usage-cli
 ```
----
 
-## CLI Usage
+## The API key
+
+Create a key at [ollama.com/settings/keys](https://ollama.com/settings/keys).
+It is the same kind of key used to run Ollama Cloud models. The command looks for
+it in this order:
+
+1. `--api-key KEY`, which your shell history keeps, so prefer the next one;
+2. the `OLLAMA_API_KEY` environment variable;
+3. `api_key` in the configuration file:
+
+   | OS | Configuration file |
+   | --- | --- |
+   | Linux | `~/.config/ollama-usage/config.toml`, or under `$XDG_CONFIG_HOME` |
+   | macOS | `~/Library/Application Support/ollama-usage/config.toml` |
+   | Windows | `%APPDATA%\ollama-usage\config.toml` |
+
+   ```toml
+   api_key = "…"
+   ```
+
+   `--config PATH` reads another file. An unknown setting is an error, so a typo
+   does not go unnoticed.
+
+The Python and Rust libraries read nothing on their own: pass them the key.
+
+## Command line
+
+| Option | Effect |
+| --- | --- |
+| `--range 24h\|7d\|30d` | Period of the usage breakdown. Default `30d`. |
+| `--json` | Print the [JSON report](#json-report) instead of the table. |
+| `--alert PCT` | Exit with code 1 when a quota window is at or above `PCT` percent. |
+| `-q`, `--quiet` | Print nothing at all; only the exit code tells the outcome. |
+| `--config PATH` | Read the configuration from `PATH`. |
+| `--debug` | Log each request, its status and duration to stderr. The key is never logged. |
+
+On a plan from before the pricing change the table shows two windows instead:
+
+```console
+$ ollama-usage
+Plan     pro
+Session  [███░░░░░░░░░░░░░░░░░]   12.5%   resets in 3h 0m
+Weekly   [████████░░░░░░░░░░░░]   40.0%   resets in 1d 12h
+Credits  purchased $2.50
+Usage    last 30 days  ·  120 req  ·  $0.80
+…
+```
+
+Percentages are green below 50 %, yellow up to 80 % and red beyond. Colours are
+used only on a terminal; set [`NO_COLOR`](https://no-color.org) to turn them off
+or `FORCE_COLOR` to force them. Warnings go to stderr, so `--json` output stays
+parseable.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | ok |
+| `1` | `--alert` threshold reached |
+| `2` | partial report: `/api/balance` or `/api/usage` failed, the other answered |
+| `3` | no report: both failed, or ollama.com rate-limited the key |
+| `4` | no API key, or the key was rejected |
+| `64` | invalid arguments or configuration |
+
+An alert takes precedence over a partial report. In a cron job:
+
 ```bash
-# Official API with an ollama.com API key (recommended: environment variable)
-export OLLAMA_API_KEY=YOUR_API_KEY
-ollama-usage
-ollama-usage --api-key YOUR_API_KEY
-
-# No API key: read the session cookie from Firefox
-ollama-usage
-ollama-usage --browser firefox
-
-# Output as JSON
-ollama-usage --json
-
-# Pass cookie manually
-ollama-usage --cookie YOUR_SESSION_COOKIE
-
-# Pass cookie via environment variable
-export OLLAMA_BROWSER_COOKIE=YOUR_SESSION_COOKIE
-ollama-usage
-
-# One-line usage
-OLLAMA_BROWSER_COOKIE=YOUR_SESSION_COOKIE ollama-usage --json
-
-# Watch mode (refresh every 30s)
-ollama-usage --watch
-ollama-usage --watch --json
-ollama-usage --watch --interval 60
-
-# Alert mode — exit code 1 if usage exceeds 80%
-ollama-usage --alert 80
-
-# Quiet mode — no output, only exit code (useful in scripts/cron)
-ollama-usage --quiet --alert 80
-
-# One-shot — notify if usage exceeds 80% (default threshold)
-ollama-usage --notify
-
-# One-shot — notify if usage exceeds 75%
-ollama-usage --notify --notify-threshold 75
-
-# Watch mode — notify when threshold is crossed, no spam between ticks
-ollama-usage --notify --watch
-
-# Watch mode — custom threshold and refresh interval
-ollama-usage --notify --watch --notify-threshold 75 --interval 60
-
-# Desktop widget (always on top, right-click for menu)
-ollama-usage --widget
-ollama-usage --widget --theme light --size compact --opacity 0.8 --position bottom-right
-
-# Debug mode
-ollama-usage --debug
-ollama-usage --debug --browser firefox
-
-# Version
-ollama-usage --version
-
-# Help
-ollama-usage --help
+ollama-usage --quiet --alert 90 || notify-send "Ollama quota above 90 %, or the check failed"
 ```
 
-### Supported plans
+## Python
 
-Since August 31, 2026, Ollama Cloud uses monthly usage credits. `ollama-usage` supports both pricing models:
+```python
+import os
+from ollama_usage import Client
 
-| Plan | Quotas reported |
-|------|-----------------|
-| Free, Pro, Max, Team (credit-based) | `monthly` |
-| Legacy Pro / Max subscriptions (started before the switch) | `session` (5 h) + `weekly` |
+client = Client(os.environ["OLLAMA_API_KEY"])
+report = client.fetch()            # or fetch("24h"), fetch("7d")
 
-Quotas that don't apply to your plan are returned as `null` and hidden from the text output.
+for name, window in report.windows.items():
+    print(name, window.used_pct, window.resets_at)    # monthly 12.5 2026-02-01 00:00:00+00:00
 
-### Example output
-
-With an API key (quota and reset date from `/api/balance`, models and spend over the last 30 days from `/api/usage`):
-```
-Monthly : 18.4% used — reset at 2026-05-15T08:30:00.123456Z
-    deepseek-v3.1:671b      1120 req  ( 54.1%)  $0.65
-    gpt-oss:120b             640 req  ( 31.2%)  $0.37
-    glm-4.6                  210 req  ( 14.7%)  $0.18
-Credits : $5.00
-Spend   : $1.20 (30d)
+if report.usage:
+    for model in report.usage.models:
+        print(model.model, model.requests, model.cost_usd, model.share_pct)
 ```
 
-The included usage refills on the day and time of the month your plan started (your
-sign-up date on the free plan) — not on the 1st: `resets_at` is `included.period.until`
-from `/api/balance`.
+The report is made of read-only dataclasses that mirror the
+[JSON report](#json-report). `report.to_dict()` gives the JSON form and
+`Report.from_dict()` reads it back, for instance from `ollama-usage --json`.
 
-With the session cookie (adds plan, per-model requests, share and cost of the month, credits balance):
-```
-Plan    : free
-Monthly : 18.4% used
-    deepseek-v3.1:671b      1120 req  ( 54.1%)  $0.65
-    gpt-oss:120b             640 req  ( 31.2%)  $0.37
-    glm-4.6                  210 req  ( 14.7%)  $0.18
-Credits : $5.00
-Spend   : $1.20 (current month)
-```
+A fetch raises only when no report can be built at all:
 
-Since November 2026, `ollama.com/dashboard` shows the share of the included usage left but
-no reset date, so with the cookie alone `resets_at` is `null`. The per-model breakdown comes
-from the cost report of the current UTC calendar month (not the quota period): `share_pct` is
-each model's share of that cost.
+```python
+from ollama_usage import ApiError, AuthError, NetworkError, RateLimitedError
 
-Legacy Pro / Max subscription:
-```
-Plan    : pro
-Session : 12.0% used — reset at 2026-04-04T15:00:00Z
-    qwen3-coder:480b          42 req  ( 55.0%)
-Weekly  : 40.0% used — reset at 2026-04-06T00:00:00Z
-    qwen3-coder:480b          42 req  ( 25.0%)
+try:
+    report = client.fetch()
+except AuthError:
+    ...  # key rejected, or account suspended
+except RateLimitedError as error:
+    ...  # retry after error.retry_after seconds (None if ollama.com did not say)
+except (NetworkError, ApiError):
+    ...  # both endpoints failed
+else:
+    if report.is_partial:
+        for warning in report.warnings:
+            print(warning.code, warning.message)  # e.g. usage_unavailable
 ```
 
-Usage percentages are color-coded in the terminal:
-- 🟢 Green — below 50%
-- 🟡 Yellow — between 50% and 80%
-- 🔴 Red — above 80%
+The client releases the GIL while it waits, and keeps the plan name for a day, so
+reuse one client rather than creating one per call.
 
-Colors are only used when writing to a terminal (not in pipes, files or cron). Set [`NO_COLOR`](https://no-color.org) to disable them, or `FORCE_COLOR` to force them.
+## Rust
 
-### JSON output (`--json`)
+```toml
+[dependencies]
+ollama-usage = { git = "https://github.com/florian-croiset/ollama-usage" }
+```
 
-Both sources return the same keys; fields a source can't provide are `null`.
+```rust
+use ollama_usage::{Client, Range};
+
+let client = Client::new(std::env::var("OLLAMA_API_KEY")?);
+let report = client.fetch(Range::Days30)?;
+println!("{}", serde_json::to_string_pretty(&report)?);
+```
+
+The client is blocking and `Send + Sync`. `cargo doc --open -p ollama-usage`
+documents every type.
+
+## JSON report
+
+`--json`, `Report.to_dict()` and the Rust `Report` produce the same document,
+described by [`schemas/usage-report-1.0.json`](schemas/usage-report-1.0.json).
+Within version 1.x fields are only ever added, so check `schema_version` rather
+than the package version. Fields that do not apply, or could not be read, are
+`null`.
 
 ```json
 {
+  "schema_version": "1.0",
+  "fetched_at": "2026-01-10T12:00:00Z",
   "plan": "free",
-  "session": null,
-  "weekly": null,
-  "monthly": {
-    "used_pct": 18.4,
-    "resets_at": null,
+  "windows": {
+    "monthly": {
+      "used_pct": 12.5,
+      "starts_at": "2026-01-01T00:00:00Z",
+      "resets_at": "2026-02-01T00:00:00Z"
+    },
+    "session": null,
+    "weekly": null
+  },
+  "credits": {
+    "included": { "balance_usd": 4.375, "allowance_usd": 5.0, "spent_usd": 0.625 },
+    "purchased_balance_usd": 0.0
+  },
+  "usage": {
+    "range": "30d",
+    "from": "2025-12-11T00:00:00Z",
+    "until": "2026-01-10T12:00:00Z",
+    "requests": 120,
+    "cost_usd": 0.8,
+    "input_tokens": 50000,
+    "cached_input_tokens": 10000,
+    "output_tokens": 20000,
     "models": [
-      { "model": "deepseek-v3.1:671b", "requests": 1120, "share_pct": 54.1, "color": "#22c55e", "cost_usd": 0.65 },
-      { "model": "gpt-oss:120b",       "requests": 640,  "share_pct": 31.2, "color": "#3b82f6", "cost_usd": 0.37 },
-      { "model": "glm-4.6",            "requests": 210,  "share_pct": 14.7, "color": "#525252", "cost_usd": 0.18 }
-    ]
+      {
+        "model": "model-a",
+        "requests": 60,
+        "cost_usd": 0.4,
+        "input_tokens": 25000,
+        "cached_input_tokens": 5000,
+        "output_tokens": 10000,
+        "share_pct": 50.0
+      }
+    ],
+    "other": null
   },
-  "credits_balance": 5.0,
-  "spend": {
-    "cost_usd": 1.2,
-    "period": "current_month",
-    "starting_at": "2026-05-01T00:00:00Z",
-    "ending_at": "2026-05-07T10:00:00Z"
-  },
-  "source": "web"
+  "warnings": []
 }
 ```
 
-| Key | Description | API key | Cookie |
-|-----|-------------|:-------:|:------:|
-| `plan` | `free`, `pro`, `max`… (`null` if it can't be read) | ✅ | ✅ |
-| `session` / `weekly` / `monthly` | quota object, or `null` if not part of your plan | ✅ | ✅ |
-| `…used_pct` | percentage of the quota used | ✅ | ✅ |
-| `…resets_at` | ISO 8601 reset date (when the included usage refills) | ✅ | `null` |
-| `…models[].model` / `.requests` | per-model request count | ✅ | ✅ |
-| `…models[].share_pct` / `.cost_usd` | share of the cost and cost in USD (last 30 days with the API, current month with the cookie) | ✅ | ✅ |
-| `…models[].color` | color of the model on ollama.com | `null` | ✅ |
-| `credits_balance` | purchased usage credits balance in USD | ✅ | ✅ |
-| `spend` | `{cost_usd, period, starting_at, ending_at}`: last 30 days (API, `period` `"30d"`) or current month (cookie, `period` `"current_month"`) | ✅ | ✅ |
-| `source` | `"api"` or `"web"` | | |
+When reading it:
 
----
+- `usage` covers a fixed range ending now, not the quota period. What was used in
+  the current period is `credits.included.spent_usd`.
+- `share_pct` is a share of the cost, or of the requests when nothing was billed.
+- `other` combines the models beyond the ten that `/api/usage` lists one by one.
+- `warnings[].code` is stable: `balance_unavailable`, `usage_unavailable`,
+  `plan_unavailable`, `monthly_allowance_missing`, `no_quota_window`. Later 1.x
+  versions may add codes.
 
-## Alert & scripting
+## Rate limits
 
-`--alert PCT` exits with code 1 if any quota (monthly, session **or** weekly) exceeds `PCT%`.  
-Combine with `--quiet` to suppress all output and use only the exit code.
+The API allows 10 requests per minute per user, shared by every key and device.
+A fetch makes two, plus one to `/api/me` the first time a client is used and then
+once a day. When ollama.com rate-limits the key, the error says how long it asked
+to wait.
 
-```bash
-# Cron: send a notification if usage exceeds 90%
-ollama-usage --quiet --alert 90 || notify-send "Ollama quota warning"
+## Privacy and security
 
-# Bash script
-if ! ollama-usage --quiet --alert 75; then
-  echo "Quota running low!"
-fi
-```
-
----
-
-## Desktop notifications
-
-`--notify` sends a native desktop notification when any quota (monthly, session **or** weekly) crosses a threshold.  
-Requires the `notify` extra: `pip install "ollama-usage[notify] @ git+https://..."`
-
-Two levels are fired automatically:
-- ⚠️ **Warning** — at the configured threshold (default: 80%)
-- 🔴 **Critical** — 15% above the threshold (capped at 100%)
-
-Each level notifies **once per threshold crossing** — no spam during `--watch`.  
-If usage drops back below the threshold, the notification will fire again if it rises once more.
-```bash
-# One-shot — notify if usage exceeds 80%
-ollama-usage --notify
-
-# Custom threshold
-ollama-usage --notify --notify-threshold 75
-
-# Continuous monitoring with notifications
-ollama-usage --notify --watch
-ollama-usage --notify --watch --notify-threshold 75 --interval 60
-```
-
----
-
-## Python Usage
-
-### With an API key (official endpoints)
-```python
-import os
-from ollama_usage import get_usage_api
-
-usage = get_usage_api(os.environ["OLLAMA_API_KEY"])
-
-print(usage["monthly"]["used_pct"])         # 18.4
-print(usage["monthly"]["resets_at"])        # "2026-05-15T08:30:00.123456Z"
-print(usage["credits_balance"])             # 5.0
-print(usage["spend"]["cost_usd"])           # 1.2 (last 30 days)
-print(usage["plan"])                        # "free" (from /api/me, None if unavailable)
-```
-
-If `/api/balance` can't be read, the dashboard can supply the quota (it looks for
-a cookie in `OLLAMA_BROWSER_COOKIE` or Firefox, or takes one you pass):
-```python
-from ollama_usage import get_usage_with_fallback
-
-usage = get_usage_with_fallback(os.environ["OLLAMA_API_KEY"])   # or (key, cookie)
-print(usage["monthly"]["used_pct"], usage["spend"]["cost_usd"])
-```
-
-### With the session cookie
-```python
-from ollama_usage import get_usage
-from ollama_usage.cookie import get_cookie_auto
-
-cookie = get_cookie_auto()
-usage = get_usage(cookie)
-
-print(usage["plan"])                        # "free"
-print(usage["monthly"]["used_pct"])         # 18.4
-print(usage["monthly"]["resets_at"])        # None (not shown by ollama.com since 2026-11)
-print(usage["credits_balance"])             # 5.0
-print(usage["spend"]["cost_usd"])           # 1.2 (current month)
-for m in usage["monthly"]["models"]:
-    print(m["model"], m["requests"], m["cost_usd"])   # "deepseek-v3.1:671b" 1120 0.65
-```
-
-Both functions return the same keys (`source` is `"api"` or `"web"`). To handle every plan (credit-based or legacy session/weekly) the same way:
-```python
-from ollama_usage import iter_periods
-
-for key, period in iter_periods(usage):     # skips quotas set to None
-    print(key, period["used_pct"], period["resets_at"])
-```
-
-### Error handling
-```python
-from ollama_usage import get_usage, get_usage_api
-from ollama_usage.exceptions import AuthError, NetworkError, ParseError
-
-try:
-    usage = get_usage_api(api_key)          # or get_usage(cookie)
-except AuthError:
-    print("API key invalid/revoked, or cookie expired.")
-except NetworkError:
-    print("Could not reach ollama.com.")
-except ParseError:
-    print("Unexpected response or page structure — open an issue.")
-```
-
----
-
-## Getting an API key
-
-1. Go to [ollama.com/settings/keys](https://ollama.com/settings/keys)
-2. Create a new key and copy it
-3. Export it: `export OLLAMA_API_KEY=...` (PowerShell: `$env:OLLAMA_API_KEY = "..."`)
-
-This is the same key used for Ollama Cloud models, so no browser access is needed.
-
----
-
-## Finding your cookie manually
-
-Only Firefox is read automatically. With any other browser (or if auto-detection fails), copy the cookie manually — or simply use an [API key](#getting-an-api-key):
-
-**Chrome / Edge / Brave**
-1. Go to `https://ollama.com/dashboard`
-2. Open DevTools → Application → Cookies → `ollama.com`
-3. Copy the value of `__Secure-session`
-
-**Firefox**
-1. Go to `https://ollama.com/dashboard`
-2. Open DevTools → Storage → Cookies → `https://ollama.com`
-3. Copy the value of `__Secure-session`
-
-Then pass it with `--cookie`, `OLLAMA_BROWSER_COOKIE`, or directly in Python.
-
----
-
-## Supported browsers (cookie auto-detection)
-
-| Browser | Windows | Linux | macOS |
-|---------|---------|-------|-------|
-| Firefox | ✅ | ✅ (incl. Snap / Flatpak) | ✅ |
-| Chrome, Edge, Brave, Opera | ❌ | ❌ | ❌ |
-| Safari  | ❌ | ❌ | ❌ |
-
-Chromium-based browsers encrypt their cookies (App-Bound Encryption on Windows since Chrome 127, OS keyring on macOS / Linux), so they can't be read reliably without elevated privileges or keyring access. Use an API key or copy the cookie manually instead.
-
----
-
-## Security note
-
-**API key** — it grants access to your Ollama account and cloud usage (which can be billed). Prefer the `OLLAMA_API_KEY` environment variable over `--api-key`, which ends up in your shell history. The key is never logged, even with `--debug`.
-
-**Session cookie** — the library reads a temporary copy of your Firefox cookie database (deleted right after) to authenticate. If your OS asks for permission to access Firefox data, this is expected: allow access to continue, or use an API key instead.
-
----
-
-## Roadmap
-
-- [x] CLI with `--json`, `--browser`, `--cookie`
-- [x] Always-on-top desktop widget (`--widget`)
-- [x] Python library API
-- [x] Firefox cookie auto-detection (Chromium support removed: encrypted cookies)
-- [x] `--watch` mode
-- [x] Colored output
-- [x] `--alert` and `--quiet` for scripting
-- [x] Desktop notifications with `--notify`
-- [x] Environment variable support (`OLLAMA_BROWSER_COOKIE`)
-- [x] Per-model usage breakdown (`session.models`, `weekly.models`)
-- [x] Credit-based plans (`monthly`, `credits_balance`)
-- [x] Official usage API with an API key (`ollama.com/api/balance` + `/api/usage`, `--api-key`, `OLLAMA_API_KEY`)
-- [x] Plan name with an API key (`/api/me`, cached in memory for 24 h)
-- [ ] Drop scraping once a documented endpoint exposes the plan name
-
----
+- The key is sent only to `https://ollama.com`, redirects are not followed, and
+  it never appears in logs, errors or debug output.
+- `/api/me` also returns your name and e-mail address; only the plan name is read.
+- Nothing is written to disk, and there is no telemetry.
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
----
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
----
-
 ## Disclaimer
 
-This project is not affiliated with Ollama.  
-It relies on the ollama.com API and on scraping `ollama.com/dashboard` and `ollama.com/settings`; either may break if Ollama changes them.  
-If it breaks, please [open an issue](https://github.com/florian-croiset/ollama-usage/issues).
+This project is not affiliated with Ollama. `/api/me` is undocumented and may
+change; if it does, `plan` becomes `null` and nothing else breaks. If something
+else breaks, please [open an issue](https://github.com/florian-croiset/ollama-usage/issues).
