@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+
+## [1.0.0-alpha.3] - 2026-11-08
+
+### Added
+- The Python package is published on PyPI as `ollama-cloud-usage`; as a
+  pre-release, it installs with `pip install --pre ollama-cloud-usage`
+
 ### Fixed
 - Certificates are verified with the operating system's trust store instead of a
   bundled list. Behind an antivirus or proxy that inspects TLS, every request
