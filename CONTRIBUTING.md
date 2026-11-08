@@ -94,6 +94,10 @@ A scope may follow, e.g. `fix(cli): …` or `feat(python): …`.
    Python wheels, and drafts a GitHub Release with them, their checksums and the
    changelog section, its wrapped lines joined since a release page shows every
    line break. Review the draft, then publish it.
+5. The same workflow waits for approval of the `pypi` environment, then publishes
+   the wheels and the source distribution to PyPI through trusted publishing,
+   without a token. A version published there cannot be replaced or reused, so
+   approve it only after checking the draft.
 
 Running the *Release* workflow by hand from the Actions tab builds everything
 without releasing, which is a way to try the builds before tagging.
