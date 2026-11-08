@@ -16,7 +16,7 @@ log = "0.4.35"
 serde.workspace = true
 serde_json.workspace = true
 time.workspace = true
-ureq = { version = "3.5.1", default-features = false, features = ["rustls"] }
+ureq = { version = "3.5.1", default-features = false, features = ["rustls", "platform-verifier"] }
 
 [lints]
 workspace = true

@@ -271,6 +271,9 @@ to wait.
 
 - The key is sent only to `https://ollama.com`, redirects are not followed, and
   it never appears in logs, errors or debug output.
+- Certificates are checked against the operating system's trust store, so an
+  antivirus or proxy that inspects TLS works as long as its authority is installed
+  on the machine.
 - `/api/me` also returns your name and e-mail address; only the plan name is read.
 - Nothing is written to disk, and there is no telemetry.
 

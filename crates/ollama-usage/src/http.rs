@@ -1,6 +1,8 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
+use ureq::tls::{RootCerts, TlsConfig};
+
 /// Responses are small JSON documents; anything larger is not one of them.
 const MAX_BODY_BYTES: u64 = 1024 * 1024;
 
@@ -43,6 +45,13 @@ impl UreqTransport {
         let agent = ureq::Agent::config_builder()
             .timeout_global(Some(timeout))
             .user_agent(concat!("ollama-usage/", env!("CARGO_PKG_VERSION")))
+            // The system store trusts what the machine trusts, including the
+            // authority of an antivirus or proxy that inspects TLS.
+            .tls_config(
+                TlsConfig::builder()
+                    .root_certs(RootCerts::PlatformVerifier)
+                    .build(),
+            )
             .http_status_as_error(false)
             // A redirect would carry the key to wherever it points.
             .max_redirects(0)

@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Fixed
+- Certificates are verified with the operating system's trust store instead of a
+  bundled list. Behind an antivirus or proxy that inspects TLS, every request
+  failed with `invalid peer certificate: UnknownIssuer`
 
 ## [1.0.0-alpha.2] - 2026-11-07
 
