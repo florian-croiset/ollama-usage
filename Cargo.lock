@@ -391,7 +391,7 @@ checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
 
 [[package]]
 name = "ollama-usage"
-version = "1.0.0-alpha.2"
+version = "1.0.0-alpha.3"
 dependencies = [
  "log",
  "serde",
@@ -402,7 +402,7 @@ dependencies = [
 
 [[package]]
 name = "ollama-usage-cli"
-version = "1.0.0-alpha.2"
+version = "1.0.0-alpha.3"
 dependencies = [
  "anstream",
  "clap",
@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "ollama-usage-py"
-version = "1.0.0-alpha.2"
+version = "1.0.0-alpha.3"
 dependencies = [
  "ollama-usage",
  "ollama-usage-cli",

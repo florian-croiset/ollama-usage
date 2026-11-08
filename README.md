@@ -39,7 +39,7 @@ for Python 3.10 and later on Linux, macOS and Windows, from the latest
 [release](https://github.com/florian-croiset/ollama-usage/releases):
 
 ```bash
-pip install --no-index --find-links https://github.com/florian-croiset/ollama-usage/releases/expanded_assets/v1.0.0-alpha.2 ollama-cloud-usage==1.0.0a2
+pip install --no-index --find-links https://github.com/florian-croiset/ollama-usage/releases/expanded_assets/v1.0.0-alpha.3 ollama-cloud-usage==1.0.0a3
 ```
 
 The package is `ollama-cloud-usage`, imported as `ollama_cloud_usage`; the
